@@ -5,7 +5,7 @@ import * as RechartsPrimitive from "recharts";
 
 import { cn } from "./utils";
 
-// Format: { THEME_NAME: CSS_SELECTOR }
+// 형식: { 테마_이름: CSS_선택자 }
 const THEMES = { light: "", dark: ".dark" } as const;
 
 export type ChartConfig = {
@@ -304,7 +304,7 @@ function ChartLegendContent({
   );
 }
 
-// Helper to extract item config from a payload.
+// 페이로드에서 항목 설정을 추출하는 헬퍼입니다.
 function getPayloadConfigFromPayload(
   config: ChartConfig,
   payload: unknown,

@@ -134,8 +134,8 @@
   }
 
   /**
-  * Default typography styles for HTML elements (h1-h4, p, label, button, input).
-  * These are in @layer base, so Tailwind utility classes (like text-sm, text-lg) automatically override them.
+  * HTML 요소(h1-h4, p, label, button, input)의 기본 타이포그래피 스타일입니다.
+  * @layer base 안에 있으므로 Tailwind 유틸리티 클래스(text-sm, text-lg 등)가 자동으로 덮어씁니다.
   */
 
   html {
