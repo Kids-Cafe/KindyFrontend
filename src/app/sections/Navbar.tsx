@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from "react";
-import { Menu, X, Sparkles } from "lucide-react";
+import { Menu, X, Sparkles, User, LogOut } from "lucide-react";
 import { MiniStar } from "@/app/components/decorative";
+import { useAuth } from "@/app/auth/AuthContext";
+import { UserAvatar } from "@/app/auth/UserAvatar";
 
 const NAV_LINKS = [
   ["#features", "서비스 소개"],
@@ -13,19 +15,55 @@ const NAV_LINKS = [
  * 상단에 고정되는 내비게이션입니다. 페이지를 스크롤하면 배경/텍스트 색상이
  * 바뀌고(반투명 흰색), 맨 위에서는 히어로 그라디언트 위에 투명하게 표시됩니다.
  * 앵커 클릭 시 짧은 화이트아웃 오버레이를 보여 즉시 이동이 어색하게 느껴지지
- * 않도록 합니다.
+ * 않도록 합니다. 로그인 상태에 따라 오른쪽 영역이 로그인 버튼 또는
+ * 프로필 메뉴로 바뀝니다.
  */
-export function Navbar({ onOpenCharacters, onOpenLogin }: { onOpenCharacters: () => void; onOpenLogin: () => void }) {
+export function Navbar({
+  onOpenCharacters,
+  onOpenLogin,
+  onOpenSignup,
+  onOpenMyPage,
+}: {
+  onOpenCharacters: () => void;
+  onOpenLogin: () => void;
+  onOpenSignup: () => void;
+  onOpenMyPage: () => void;
+}) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   const overlayRef = useRef<HTMLDivElement>(null);
+  const profileRef = useRef<HTMLDivElement>(null);
   const busy = useRef(false);
+
+  const { user, isAuthenticated, logout } = useAuth();
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 30);
     window.addEventListener("scroll", onScroll);
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
+
+  // 프로필 드롭다운: 바깥 클릭이나 Esc로 닫습니다.
+  useEffect(() => {
+    if (!profileOpen) return;
+
+    const onPointerDown = (event: MouseEvent) => {
+      if (profileRef.current && !profileRef.current.contains(event.target as Node)) {
+        setProfileOpen(false);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setProfileOpen(false);
+    };
+
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [profileOpen]);
 
   const handleNavClick = (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
     e.preventDefault();
@@ -114,18 +152,81 @@ export function Navbar({ onOpenCharacters, onOpenLogin }: { onOpenCharacters: ()
               <Sparkles className="w-3.5 h-3.5" />
               캐릭터 소개
             </button>
-            <button onClick={onOpenLogin} className={`text-sm font-semibold hover:opacity-70 transition-opacity ${scrolled ? "text-foreground" : "text-white"}`}>
-              로그인
-            </button>
-            <button className="text-sm font-bold px-5 py-2.5 rounded-full transition-all shadow-sm hover:shadow-md active:scale-95"
-              style={{ background: scrolled ? "linear-gradient(135deg,#E879A0,#F472B6)" : "white",
-                color: scrolled ? "white" : "#E879A0" }}>
-              무료 시작하기
-            </button>
+
+            {isAuthenticated && user ? (
+              /* ── 로그인 상태: 프로필 드롭다운 ── */
+              <div className="relative" ref={profileRef}>
+                <button
+                  onClick={() => setProfileOpen((open) => !open)}
+                  aria-haspopup="menu"
+                  aria-expanded={profileOpen}
+                  aria-label="내 계정 메뉴 열기"
+                  className="flex items-center gap-2 pl-1.5 pr-3 py-1.5 rounded-full transition-all hover:scale-105 active:scale-95"
+                  style={{
+                    background: scrolled ? "rgba(232,121,160,0.1)" : "rgba(255,255,255,0.15)",
+                    border: scrolled ? "1px solid rgba(232,121,160,0.25)" : "1px solid rgba(255,255,255,0.25)",
+                  }}
+                >
+                  <UserAvatar user={user} size={30} />
+                  <span className={`text-sm font-bold max-w-[7rem] truncate ${scrolled ? "text-foreground" : "text-white"}`}>
+                    {user.name}
+                  </span>
+                </button>
+
+                {profileOpen && (
+                  <div
+                    role="menu"
+                    className="absolute right-0 mt-2 w-60 rounded-2xl bg-white overflow-hidden"
+                    style={{ boxShadow: "0 12px 36px rgba(31,10,60,0.18)", border: "1px solid #F3F4F6" }}
+                  >
+                    {/* 계정 요약 */}
+                    <div className="flex items-center gap-3 px-4 py-3.5" style={{ borderBottom: "1px solid #F3F4F6" }}>
+                      <UserAvatar user={user} size={38} />
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold truncate" style={{ color: "#1F0A3C" }}>{user.name}</p>
+                        <p className="text-xs truncate" style={{ color: "#9CA3AF" }}>{user.email}</p>
+                      </div>
+                    </div>
+
+                    <button
+                      role="menuitem"
+                      onClick={() => { setProfileOpen(false); onOpenMyPage(); }}
+                      className="w-full flex items-center gap-2.5 px-4 py-3 text-sm font-semibold transition-colors hover:bg-gray-50"
+                      style={{ color: "#1F0A3C" }}
+                    >
+                      <User className="w-4 h-4" style={{ color: "#E879A0" }} />
+                      마이페이지
+                    </button>
+                    <button
+                      role="menuitem"
+                      onClick={() => { setProfileOpen(false); logout(); }}
+                      className="w-full flex items-center gap-2.5 px-4 py-3 text-sm font-semibold transition-colors hover:bg-red-50"
+                      style={{ color: "#EF4444", borderTop: "1px solid #F3F4F6" }}
+                    >
+                      <LogOut className="w-4 h-4" />
+                      로그아웃
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* ── 비로그인 상태 ── */
+              <>
+                <button onClick={onOpenLogin} className={`text-sm font-semibold hover:opacity-70 transition-opacity ${scrolled ? "text-foreground" : "text-white"}`}>
+                  로그인
+                </button>
+                <button onClick={onOpenSignup} className="text-sm font-bold px-5 py-2.5 rounded-full transition-all shadow-sm hover:shadow-md active:scale-95"
+                  style={{ background: scrolled ? "linear-gradient(135deg,#E879A0,#F472B6)" : "white",
+                    color: scrolled ? "white" : "#E879A0" }}>
+                  무료 시작하기
+                </button>
+              </>
+            )}
           </div>
 
           {/* 햄버거 버튼 */}
           <button className={`md:hidden ${scrolled ? "text-foreground" : "text-white"}`}
+            aria-label={menuOpen ? "메뉴 닫기" : "메뉴 열기"}
             onClick={() => setMenuOpen(!menuOpen)}>
             {menuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
           </button>
@@ -140,6 +241,18 @@ export function Navbar({ onOpenCharacters, onOpenLogin }: { onOpenCharacters: ()
                 {label}
               </a>
             ))}
+
+            {/* 모바일: 로그인 상태 요약 */}
+            {isAuthenticated && user && (
+              <div className="flex items-center gap-3 py-4" style={{ borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
+                <UserAvatar user={user} size={40} />
+                <div className="min-w-0">
+                  <p className="text-sm font-bold truncate" style={{ color: "#1F0A3C" }}>{user.name}</p>
+                  <p className="text-xs truncate" style={{ color: "#9CA3AF" }}>{user.email}</p>
+                </div>
+              </div>
+            )}
+
             <div className="pt-4 flex flex-wrap gap-3">
               <button
                 onClick={() => { setMenuOpen(false); onOpenCharacters(); }}
@@ -148,11 +261,26 @@ export function Navbar({ onOpenCharacters, onOpenLogin }: { onOpenCharacters: ()
                 <Sparkles className="w-3.5 h-3.5" />
                 캐릭터 소개
               </button>
-              <button onClick={() => { setMenuOpen(false); onOpenLogin(); }} className="text-sm font-semibold text-foreground">로그인</button>
-              <button className="text-sm font-bold px-5 py-2.5 rounded-full text-white"
-                style={{ background: "linear-gradient(135deg,#E879A0,#F472B6)" }}>
-                무료 시작하기
-              </button>
+
+              {isAuthenticated ? (
+                <>
+                  <button onClick={() => { setMenuOpen(false); onOpenMyPage(); }} className="text-sm font-bold px-5 py-2.5 rounded-full text-white"
+                    style={{ background: "linear-gradient(135deg,#E879A0,#F472B6)" }}>
+                    마이페이지
+                  </button>
+                  <button onClick={() => { setMenuOpen(false); logout(); }} className="text-sm font-semibold" style={{ color: "#EF4444" }}>
+                    로그아웃
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button onClick={() => { setMenuOpen(false); onOpenLogin(); }} className="text-sm font-semibold text-foreground">로그인</button>
+                  <button onClick={() => { setMenuOpen(false); onOpenSignup(); }} className="text-sm font-bold px-5 py-2.5 rounded-full text-white"
+                    style={{ background: "linear-gradient(135deg,#E879A0,#F472B6)" }}>
+                    무료 시작하기
+                  </button>
+                </>
+              )}
             </div>
           </div>
         )}
