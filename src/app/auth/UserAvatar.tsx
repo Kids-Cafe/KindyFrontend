@@ -1,5 +1,6 @@
 import { PROVIDERS } from "@/app/auth/providers";
 import { ProviderIcon } from "@/app/auth/ProviderIcon";
+import { getDisplayName } from "@/app/auth/getDisplayName";
 import type { AuthUser } from "@/app/auth/types";
 
 /**
@@ -37,7 +38,7 @@ export function UserAvatar({
             border: "2px solid rgba(255,255,255,0.9)",
           }}
         >
-          {user.name.trim().charAt(0) || "K"}
+          {getDisplayName(user).trim().charAt(0) || "K"}
         </span>
       )}
 

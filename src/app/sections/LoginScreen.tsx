@@ -8,8 +8,8 @@ import { ProviderIcon } from "@/app/auth/ProviderIcon";
 
 /**
  * 전체 화면 로그인 모달입니다. 왼쪽에는 테마형 비주얼 패널(데스크톱 전용),
- * 오른쪽에는 실제 폼을 배치합니다. 이메일/비밀번호 폼은 아직 시각용 목업이고,
- * 소셜 로그인 버튼만 실제 OAuth 리다이렉트 흐름에 연결되어 있습니다.
+ * 오른쪽에는 실제 폼을 배치합니다. 아이디/비밀번호 로그인은 mock 저장소(localStorage)를
+ * 조회해 검증하고, 소셜 로그인 버튼은 실제 OAuth 리다이렉트 흐름에 연결되어 있습니다.
  * 회원가입은 별도 화면(`SignupScreen`)에서 처리합니다.
  */
 export function LoginScreen({
@@ -19,13 +19,18 @@ export function LoginScreen({
   onClose: () => void;
   onSwitchToSignup: () => void;
 }) {
-  const [email, setEmail] = useState("");
+  const [loginId, setLoginId] = useState("");
   const [pw, setPw] = useState("");
   const [showPw, setShowPw] = useState(false);
 
-  const { loginWith, pendingProvider, error } = useAuth();
+  const { loginWith, loginWithPassword, pendingProvider, error } = useAuth();
   // 하나라도 진행 중이면 나머지 버튼은 잠급니다.
   const isBusy = pendingProvider !== null;
+
+  function handleLoginSubmit(e: { preventDefault: () => void }) {
+    e.preventDefault();
+    loginWithPassword(loginId, pw);
+  }
 
   return (
     <div className="fixed inset-0 z-[9000] flex" role="dialog" aria-modal="true" aria-label="로그인">
@@ -97,12 +102,13 @@ export function LoginScreen({
           </div>
 
           {/* 입력 필드 */}
+          <form onSubmit={handleLoginSubmit}>
           <div className="space-y-3 mb-4">
             <div>
-              <label className="block text-xs font-semibold mb-1.5" style={{color:"#6B7280"}}>이메일</label>
+              <label className="block text-xs font-semibold mb-1.5" style={{color:"#6B7280"}}>아이디</label>
               <input
-                type="email" placeholder="이메일 주소를 입력해주세요"
-                value={email} onChange={e => setEmail(e.target.value)}
+                type="text" placeholder="아이디를 입력해주세요"
+                value={loginId} onChange={e => setLoginId(e.target.value)}
                 className="w-full rounded-2xl px-4 outline-none transition-all text-sm"
                 style={{height:54, border:"1.5px solid #E5E7EB", background:"#FAFAFA", color:"#1F0A3C"}}
                 onFocus={e => { e.target.style.border="1.5px solid #E879A0"; e.target.style.boxShadow="0 0 0 3px rgba(232,121,160,0.12)"; }}
@@ -135,25 +141,7 @@ export function LoginScreen({
 
           {/* 비밀번호 찾기 */}
           <div className="flex justify-end mb-5">
-            <button className="text-xs font-semibold" style={{color:"#9CA3AF"}}>비밀번호를 잊으셨나요?</button>
-          </div>
-
-          {/* 기본 버튼 */}
-          <button
-            className="w-full rounded-2xl font-bold text-white text-base transition-all hover:opacity-90 active:scale-[0.98] mb-5"
-            style={{
-              height:52,
-              background:"linear-gradient(135deg, #E879A0 0%, #F472B6 50%, #C084FC 100%)",
-              boxShadow:"0 4px 20px rgba(232,121,160,0.40)",
-            }}>
-            로그인
-          </button>
-
-          {/* 구분선 */}
-          <div className="flex items-center gap-3 mb-5">
-            <div className="flex-1 h-px" style={{background:"#E5E7EB"}} />
-            <span className="text-xs font-medium" style={{color:"#D1D5DB"}}>또는 간편 로그인</span>
-            <div className="flex-1 h-px" style={{background:"#E5E7EB"}} />
+            <button type="button" className="text-xs font-semibold" style={{color:"#9CA3AF"}}>비밀번호를 잊으셨나요?</button>
           </div>
 
           {/* 로그인 실패 메시지 */}
@@ -166,6 +154,26 @@ export function LoginScreen({
               {error}
             </div>
           )}
+
+          {/* 기본 버튼 */}
+          <button
+            type="submit"
+            className="w-full rounded-2xl font-bold text-white text-base transition-all hover:opacity-90 active:scale-[0.98] mb-5"
+            style={{
+              height:52,
+              background:"linear-gradient(135deg, #E879A0 0%, #F472B6 50%, #C084FC 100%)",
+              boxShadow:"0 4px 20px rgba(232,121,160,0.40)",
+            }}>
+            로그인
+          </button>
+          </form>
+
+          {/* 구분선 */}
+          <div className="flex items-center gap-3 mb-5">
+            <div className="flex-1 h-px" style={{background:"#E5E7EB"}} />
+            <span className="text-xs font-medium" style={{color:"#D1D5DB"}}>또는 간편 로그인</span>
+            <div className="flex-1 h-px" style={{background:"#E5E7EB"}} />
+          </div>
 
           {/* 소셜 로그인 */}
           <div className="flex justify-center gap-3">

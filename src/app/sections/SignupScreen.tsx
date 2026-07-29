@@ -161,6 +161,7 @@ export function SignupScreen({
     const user = registerMockUser({
       name: form.name.trim(),
       email: form.email.trim(),
+      password: form.password,
       phone: form.phone.trim(),
       zonecode: form.zonecode,
       address,
@@ -175,6 +176,7 @@ export function SignupScreen({
     const user = registerMockUser({
       name: childForm.name.trim(),
       email: childForm.loginId.trim(),
+      password: childForm.password,
       phone: childForm.phone.trim(),
       accountType: "child",
       birthDate: childForm.birthDate,
@@ -216,6 +218,13 @@ export function SignupScreen({
     }
     setGuardianStepError(null);
     setGuardianVerified(true);
+  }
+
+  function handleVerifyFormSubmit(e: { preventDefault: () => void }) {
+    e.preventDefault();
+    if (guardianVerified) setStep("childForm");
+    else if (verificationSent) handleConfirmVerificationCode();
+    else handleSendVerificationCode();
   }
 
   function handleBack() {
@@ -365,6 +374,7 @@ export function SignupScreen({
               <p className="text-sm" style={{ color: "#9CA3AF" }}>휴대폰 번호로 법적대리인 본인인증을 진행해주세요 (테스트 인증)</p>
             </div>
 
+            <form onSubmit={handleVerifyFormSubmit}>
             <div className="space-y-3 mb-2">
               <Field label="법적대리인 이름">
                 <input type="text" placeholder="법적대리인 이름을 입력해주세요"
@@ -411,7 +421,7 @@ export function SignupScreen({
             </div>
 
             <button
-              onClick={() => setStep("childForm")}
+              type="submit"
               disabled={!guardianVerified}
               className="w-full rounded-2xl font-bold text-white text-base transition-all hover:opacity-90 active:scale-[0.98] mt-4 disabled:opacity-40 disabled:cursor-not-allowed"
               style={{
@@ -421,6 +431,7 @@ export function SignupScreen({
               }}>
               인증 완료, 다음으로
             </button>
+            </form>
           </div>
         )}
 
@@ -433,6 +444,7 @@ export function SignupScreen({
               <p className="text-sm" style={{ color: "#9CA3AF" }}>키오와 키나를 지금 만나보세요</p>
             </div>
 
+            <form onSubmit={(e) => { e.preventDefault(); handleChildSubmit(); }}>
             <div className="space-y-3 mb-2">
               <Field label="아이디">
                 <input type="text" placeholder="4~20자의 영문/숫자"
@@ -510,7 +522,7 @@ export function SignupScreen({
               <ErrorText message={childErrors.gender} />
             </div>
 
-            <button onClick={handleChildSubmit}
+            <button type="submit"
               className="w-full rounded-2xl font-bold text-white text-base transition-all hover:opacity-90 active:scale-[0.98] mb-5 mt-2"
               style={{
                 height: 52,
@@ -519,9 +531,10 @@ export function SignupScreen({
               }}>
               가입하기
             </button>
+            </form>
 
             <p className="text-center text-xs" style={{ color: "#9CA3AF" }}>
-              이미 계정이 있으신가요? <button onClick={onSwitchToLogin} className="font-bold" style={{ color: "#E879A0" }}>로그인</button>
+              이미 계정이 있으신가요? <button type="button" onClick={onSwitchToLogin} className="font-bold" style={{ color: "#E879A0" }}>로그인</button>
             </p>
           </div>
         )}
@@ -535,6 +548,7 @@ export function SignupScreen({
             <p className="text-sm" style={{ color: "#9CA3AF" }}>키오와 키나를 지금 만나보세요</p>
           </div>
 
+          <form onSubmit={(e) => { e.preventDefault(); handleSubmit(); }}>
           <div className="space-y-3 mb-2">
             <Field label="이름">
               <input type="text" placeholder="본명을 입력해주세요"
@@ -611,7 +625,7 @@ export function SignupScreen({
             <ErrorText message={errors.addressDetail} />
           </div>
 
-          <button onClick={handleSubmit}
+          <button type="submit"
             className="w-full rounded-2xl font-bold text-white text-base transition-all hover:opacity-90 active:scale-[0.98] mb-5 mt-2"
             style={{
               height: 52,
@@ -620,9 +634,10 @@ export function SignupScreen({
             }}>
             가입하기
           </button>
+          </form>
 
           <p className="text-center text-xs" style={{ color: "#9CA3AF" }}>
-            이미 계정이 있으신가요? <button onClick={onSwitchToLogin} className="font-bold" style={{ color: "#E879A0" }}>로그인</button>
+            이미 계정이 있으신가요? <button type="button" onClick={onSwitchToLogin} className="font-bold" style={{ color: "#E879A0" }}>로그인</button>
           </p>
         </div>
         )}

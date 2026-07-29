@@ -3,6 +3,7 @@ import { useAuth } from "@/app/auth/AuthContext";
 import { PROVIDERS, PROVIDER_ORDER } from "@/app/auth/providers";
 import { ProviderIcon } from "@/app/auth/ProviderIcon";
 import { UserAvatar } from "@/app/auth/UserAvatar";
+import { getDisplayName } from "@/app/auth/getDisplayName";
 
 /** 마이페이지 메뉴 항목입니다. 아직 화면만 있는 목업입니다. */
 const MENU_ITEMS = [
@@ -66,7 +67,7 @@ export function MyPage({ onClose }: { onClose: () => void }) {
             <UserAvatar user={user} size={64} />
             <div className="min-w-0">
               <p className="text-xl font-bold text-white truncate" style={{ fontFamily: "'Fredoka',sans-serif" }}>
-                {user.name}
+                {getDisplayName(user)}
               </p>
               <p className="text-sm truncate" style={{ color: "rgba(255,255,255,0.8)" }}>{user.email}</p>
               <p className="text-xs mt-1" style={{ color: "rgba(255,255,255,0.65)" }}>

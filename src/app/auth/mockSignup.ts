@@ -1,4 +1,11 @@
-import type { AccountType, AuthUser, KindergartenInfo, StudentGender } from "@/app/auth/types";
+import type {
+  AccountType,
+  AuthUser,
+  KindergartenInfo,
+  StudentGender,
+  TeacherRole,
+  UserRole,
+} from "@/app/auth/types";
 
 /**
  * 백엔드가 붙기 전까지 회원가입/유치원 등록을 흉내 내는 mock 저장소입니다.
@@ -12,6 +19,8 @@ interface MockUserRecord {
   id: string;
   name: string;
   email: string;
+  /** 성인은 가입 시 입력한 비밀번호, 아동은 아이디 비밀번호입니다. 소셜 가입 계정은 없습니다. */
+  password: string;
   phone: string;
   zonecode: string;
   address: string;
@@ -22,6 +31,12 @@ interface MockUserRecord {
   gender?: StudentGender;
   guardianName?: string;
   guardianPhone?: string;
+  /** 온보딩에서 정한 별칭/애칭. 온보딩을 마치기 전에는 없습니다. */
+  nickname?: string;
+  role?: UserRole;
+  teacherRole?: TeacherRole;
+  kindergarten?: KindergartenInfo;
+  onboardingCompleted?: boolean;
 }
 
 const SEED_KINDERGARTENS: KindergartenInfo[] = [
@@ -69,6 +84,19 @@ function writeKindergartens(list: KindergartenInfo[]): void {
   }
 }
 
+/**
+ * 온보딩 등에서 갱신된 사용자 정보를 mock 저장소에 반영합니다.
+ * 이걸 빼먹으면 로그아웃 후 다시 로그인했을 때 별칭 같은 값이 사라집니다.
+ */
+export function updateMockUser(id: string, partial: Partial<MockUserRecord>): void {
+  const users = readUsers();
+  const index = users.findIndex((u) => u.id === id);
+  if (index === -1) return; // 소셜 로그인 등 mock 저장소에 없는 계정입니다.
+
+  users[index] = { ...users[index], ...partial };
+  writeUsers(users);
+}
+
 export function isEmailTaken(email: string): boolean {
   const normalized = email.trim().toLowerCase();
   return readUsers().some((u) => u.email.toLowerCase() === normalized);
@@ -78,6 +106,7 @@ export interface SignupPayload {
   name: string;
   /** 성인은 이메일, 아동은 아이디입니다. */
   email: string;
+  password: string;
   phone: string;
   /** 성인 가입에서만 씁니다. */
   zonecode?: string;
@@ -100,6 +129,7 @@ export function registerMockUser(payload: SignupPayload): AuthUser {
     id,
     name: payload.name,
     email: payload.email,
+    password: payload.password,
     phone: payload.phone,
     zonecode: payload.zonecode ?? "",
     address: payload.address ?? "",
@@ -124,6 +154,39 @@ export function registerMockUser(payload: SignupPayload): AuthUser {
     gender: payload.gender,
     guardianName: payload.guardianName,
     guardianPhone: payload.guardianPhone,
+  };
+}
+
+export type MockLoginResult =
+  | { ok: true; user: AuthUser }
+  | { ok: false; reason: "not-found" | "wrong-password" };
+
+/** 아이디/비밀번호로 mock 저장소를 조회합니다. 백엔드가 붙기 전까지 로그인 검증을 흉내 냅니다. */
+export function loginMockUser(loginId: string, password: string): MockLoginResult {
+  const normalized = loginId.trim().toLowerCase();
+  const record = readUsers().find((u) => u.email.toLowerCase() === normalized);
+  if (!record) return { ok: false, reason: "not-found" };
+  if (record.password !== password) return { ok: false, reason: "wrong-password" };
+
+  return {
+    ok: true,
+    user: {
+      id: record.id,
+      name: record.name,
+      email: record.email,
+      provider: "email",
+      joinedAt: record.joinedAt,
+      accountType: record.accountType,
+      birthDate: record.birthDate,
+      gender: record.gender,
+      guardianName: record.guardianName,
+      guardianPhone: record.guardianPhone,
+      nickname: record.nickname,
+      role: record.role,
+      teacherRole: record.teacherRole,
+      kindergarten: record.kindergarten,
+      onboardingCompleted: record.onboardingCompleted,
+    },
   };
 }
 

@@ -43,6 +43,7 @@ export function KindergartenRegisterStep({
       </h2>
       <p className="text-sm mb-6" style={{ color: "#6B7280" }}>원장님 계정으로 유치원을 새로 만들게요</p>
 
+      <form onSubmit={(e) => { e.preventDefault(); handleSubmit(); }}>
       <div className="space-y-3 mb-4">
         <input type="text" placeholder="유치원 이름" value={name} onChange={(e) => setName(e.target.value)}
           className="w-full rounded-2xl px-4 outline-none text-sm" style={inputStyle} />
@@ -67,11 +68,12 @@ export function KindergartenRegisterStep({
 
       {error && <p className="text-xs font-semibold mb-4" style={{ color: "#DC2626" }}>{error}</p>}
 
-      <button onClick={handleSubmit}
+      <button type="submit"
         className="w-full rounded-2xl font-bold text-white text-base transition-all hover:opacity-90 active:scale-[0.98]"
         style={{ height: 52, background: "linear-gradient(135deg, #E879A0 0%, #F472B6 50%, #C084FC 100%)" }}>
         등록하고 시작하기
       </button>
+      </form>
     </div>
   );
 }

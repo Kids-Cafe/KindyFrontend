@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { beginSocialLogin } from "@/app/auth/oauth";
+import { loginMockUser, updateMockUser } from "@/app/auth/mockSignup";
 import { clearSession, loadSession, saveSession } from "@/app/auth/storage";
 import type { AuthSession, AuthUser, SocialProviderId } from "@/app/auth/types";
 
@@ -16,6 +17,8 @@ interface AuthContextValue {
   error: string | null;
   /** 인가 페이지로 이동시킵니다. */
   loginWith: (provider: SocialProviderId) => Promise<void>;
+  /** 아이디/비밀번호로 mock 로그인을 시도합니다. 성공하면 true를 돌려주고 세션을 반영합니다. */
+  loginWithPassword: (loginId: string, password: string) => boolean;
   /** 콜백 처리 결과로 받은 세션을 확정합니다. */
   setSession: (session: AuthSession) => void;
   /** 로그인된 사용자 정보 일부를 병합해 저장합니다. 온보딩 단계에서 씁니다. */
@@ -73,11 +76,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const loginWithPassword = useCallback((loginId: string, password: string): boolean => {
+    const result = loginMockUser(loginId, password);
+    if (!result.ok) {
+      // 아이디 존재 여부가 드러나지 않도록 원인과 무관하게 같은 문구를 보여줍니다.
+      setError("아이디 또는 비밀번호가 올바르지 않아요.");
+      return false;
+    }
+    setSession({ user: result.user, accessToken: crypto.randomUUID(), expiresAt: Date.now() + 1000 * 60 * 60 * 24 * 7 });
+    return true;
+  }, [setSession]);
+
   const updateProfile = useCallback((partial: Partial<AuthUser>) => {
     setSessionState((prev) => {
       if (!prev) return prev;
       const next: AuthSession = { ...prev, user: { ...prev.user, ...partial } };
       saveSession(next);
+      // 세션(localStorage)뿐 아니라 mock 계정 저장소에도 반영해야
+      // 로그아웃 후 다시 로그인했을 때 별칭 등이 유지됩니다.
+      if (next.user.provider === "email") {
+        updateMockUser(next.user.id, partial);
+      }
       return next;
     });
   }, []);
@@ -96,12 +115,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       pendingProvider,
       error,
       loginWith,
+      loginWithPassword,
       setSession,
       updateProfile,
       setError,
       logout,
     }),
-    [session, isLoading, pendingProvider, error, loginWith, setSession, updateProfile, logout],
+    [session, isLoading, pendingProvider, error, loginWith, loginWithPassword, setSession, updateProfile, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
