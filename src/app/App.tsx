@@ -17,6 +17,7 @@ import { MyPage } from "@/app/sections/MyPage";
 import { OAuthCallback } from "@/app/sections/OAuthCallback";
 import { isOnCallbackRoute } from "@/app/auth/oauth";
 import { useAuth } from "@/app/auth/AuthContext";
+import { DashboardShell } from "@/app/dashboard/DashboardShell";
 
 type AuthFlow = "login" | "signup" | "onboarding" | null;
 
@@ -27,6 +28,7 @@ type AuthFlow = "login" | "signup" | "onboarding" | null;
  * `./components/decorative`, 문구와 샘플 데이터는 `./data`에 있습니다.
  *
  * 라우터를 따로 쓰지 않으므로 OAuth 콜백 경로만 pathname으로 분기합니다.
+ * 로그인 + 온보딩까지 마친 사용자는 랜딩 대신 디스코드형 대시보드(`DashboardShell`)를 보게 됩니다.
  */
 export default function App() {
   const [splashDone, setSplashDone] = useState(false);
@@ -34,7 +36,7 @@ export default function App() {
   const [authFlow, setAuthFlow] = useState<AuthFlow>(null);
   const [showMyPage, setShowMyPage] = useState(false);
 
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
 
   // 로그인에 성공하면 열려 있던 로그인 모달을 닫습니다. (회원가입 → 온보딩 전환은 그대로 둡니다.)
   useEffect(() => {
@@ -43,6 +45,9 @@ export default function App() {
 
   // ── OAuth 콜백 경로: 랜딩을 렌더하지 않고 처리 화면만 보여줍니다. ──
   if (isOnCallbackRoute()) return <OAuthCallback />;
+
+  // ── 로그인 + 온보딩 완료: 랜딩 대신 기능 대시보드를 보여줍니다. ──
+  if (isAuthenticated && user?.onboardingCompleted) return <DashboardShell />;
 
   return (
     <div className="min-h-screen bg-background text-foreground">

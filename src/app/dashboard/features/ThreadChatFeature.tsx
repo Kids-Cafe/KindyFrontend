@@ -1,0 +1,116 @@
+import { useEffect, useRef, useState } from "react";
+import { Send } from "lucide-react";
+import { useDashboardStore } from "@/app/dashboard/DashboardStoreContext";
+import { REPORT_CATEGORY_ORDER, REPORT_META } from "@/app/dashboard/reportMeta";
+import { ReportByCategory } from "@/app/dashboard/reports";
+import type { ChatSender, DataCardType } from "@/app/dashboard/types";
+
+function formatTime(ms: number): string {
+  const d = new Date(ms);
+  return `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
+}
+
+/**
+ * 부모 ↔ 선생님 채팅 한 개 스레드의 대화창입니다.
+ * 공식 상담 채널처럼, 입력창 위 칩 버튼으로 아이의 데이터(건강/식단/성격/학습/교우관계)를
+ * 카드 형태로 대화에 바로 불러올 수 있습니다.
+ */
+export function ThreadChatFeature({ childId, viewerRole, viewerName }: { childId: string; viewerRole: ChatSender; viewerName: string }) {
+  const { data, sendThreadMessage, insertDataCard } = useDashboardStore();
+  const [input, setInput] = useState("");
+  const thread = data.threadsByChild[childId];
+  const reports = data.reportsByChild[childId];
+  const endRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [thread?.messages.length]);
+
+  if (!thread) return null;
+
+  const counterpartName = viewerRole === "parent" ? thread.teacherName : thread.parentName;
+
+  function handleSend() {
+    if (!input.trim()) return;
+    sendThreadMessage(childId, viewerRole, viewerName, input);
+    setInput("");
+  }
+
+  function handleDataFetch(category: DataCardType) {
+    insertDataCard(childId, viewerRole, viewerName, category);
+  }
+
+  return (
+    <div className="flex flex-col h-full max-w-2xl">
+      <div className="pb-3 mb-3 border-b" style={{ borderColor: "rgba(232,121,160,0.15)" }}>
+        <p className="text-xs" style={{ color: "#A06080" }}>{thread.childNickname} 학생 · {counterpartName}님과의 대화</p>
+      </div>
+
+      <div className="flex-1 overflow-y-auto space-y-3 pr-1 pb-3">
+        {thread.messages.map((msg) => {
+          const isMine = msg.sender === viewerRole;
+          if (msg.kind === "data-card" && msg.cardType) {
+            return (
+              <div key={msg.id} className={`flex flex-col ${isMine ? "items-end" : "items-start"}`}>
+                <p className="text-xs mb-1 px-1" style={{ color: "#A06080" }}>{msg.senderName}님이 {REPORT_META[msg.cardType].short} 정보를 불러왔어요</p>
+                <div className="max-w-[85%] w-full">
+                  <ReportByCategory category={msg.cardType} reports={reports} />
+                </div>
+              </div>
+            );
+          }
+          return (
+            <div key={msg.id} className={`flex flex-col ${isMine ? "items-end" : "items-start"}`}>
+              <div
+                className="max-w-[75%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed"
+                style={isMine
+                  ? { background: "linear-gradient(135deg,#E879A0,#F472B6)", color: "white", borderTopRightRadius: 4 }
+                  : { background: "var(--card)", border: "1px solid rgba(232,121,160,0.18)", color: "#3B1355", borderTopLeftRadius: 4 }}
+              >
+                {msg.text}
+              </div>
+              <p className="text-xs mt-1 px-1" style={{ color: "#C0A0B5" }}>{msg.senderName} · {formatTime(msg.time)}</p>
+            </div>
+          );
+        })}
+        <div ref={endRef} />
+      </div>
+
+      <div className="shrink-0">
+        <div className="flex gap-1.5 flex-wrap mb-2">
+          {REPORT_CATEGORY_ORDER.map((category) => {
+            const meta = REPORT_META[category];
+            return (
+              <button
+                key={category}
+                onClick={() => handleDataFetch(category)}
+                className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-full font-bold transition-all hover:scale-[1.03] active:scale-95"
+                style={{ background: `${meta.color}22`, color: "#3B1355", border: `1px solid ${meta.color}55` }}
+              >
+                <meta.icon className="w-3 h-3" style={{ color: meta.color }} />
+                {meta.short} 불러오기
+              </button>
+            );
+          })}
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleSend()}
+            placeholder={`${counterpartName}님께 메시지 보내기`}
+            className="flex-1 rounded-full px-4 py-2.5 text-sm outline-none"
+            style={{ background: "var(--input-background)", border: "1px solid rgba(232,121,160,0.2)" }}
+          />
+          <button
+            onClick={handleSend}
+            className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-transform active:scale-90"
+            style={{ background: "linear-gradient(135deg,#E879A0,#F472B6)" }}
+          >
+            <Send className="w-4 h-4 text-white" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
