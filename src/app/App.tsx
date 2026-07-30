@@ -38,16 +38,33 @@ export default function App() {
 
   const { isAuthenticated, user } = useAuth();
 
-  // 로그인에 성공하면 열려 있던 로그인 모달을 닫습니다. (회원가입 → 온보딩 전환은 그대로 둡니다.)
+  // 로그인에 성공하면 로그인 모달을 닫습니다. 온보딩을 마치지 못한 계정이면
+  // 홈페이지 대신 온보딩으로 보내 계정 종류(아동/선생님/학부모)에 맞는
+  // 대시보드로 이어지게 합니다. (회원가입 → 온보딩 전환은 그대로 둡니다.)
+  //
+  // 카카오/네이버 등 소셜 로그인은 OAuth 콜백에서 `window.location.replace`로
+  // 페이지를 새로고침하며 돌아오기 때문에 authFlow state가 "login"으로
+  // 남아있지 않고 초기값(null)으로 리셋됩니다. authFlow 값과 상관없이
+  // "로그인은 됐지만 온보딩이 안 끝난 상태"인지만 보고 판단해야
+  // 소셜 로그인 후에도 온보딩(→ 대시보드)으로 이어집니다.
   useEffect(() => {
-    if (isAuthenticated && authFlow === "login") setAuthFlow(null);
-  }, [isAuthenticated, authFlow]);
+    if (!isAuthenticated) return;
+    if (!user?.onboardingCompleted) {
+      setAuthFlow("onboarding");
+    } else if (authFlow === "login" || authFlow === "onboarding") {
+      setAuthFlow(null);
+    }
+  }, [isAuthenticated, authFlow, user?.onboardingCompleted]);
 
   // ── OAuth 콜백 경로: 랜딩을 렌더하지 않고 처리 화면만 보여줍니다. ──
   if (isOnCallbackRoute()) return <OAuthCallback />;
 
   // ── 로그인 + 온보딩 완료: 랜딩 대신 기능 대시보드를 보여줍니다. ──
-  if (isAuthenticated && user?.onboardingCompleted) return <DashboardShell />;
+  // 대시보드 안에서는 좌측 상단 "kindy" 로고를 눌러도 대시보드 메인페이지로 돌아올 뿐,
+  // 마케팅 랜딩으로는 나가지 않습니다(로그아웃해야 랜딩을 다시 보게 됩니다).
+  if (isAuthenticated && user?.onboardingCompleted) {
+    return <DashboardShell />;
+  }
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -72,8 +89,9 @@ export default function App() {
           onOpenLogin={() => setAuthFlow("login")}
           onOpenSignup={() => setAuthFlow("signup")}
           onOpenMyPage={() => setShowMyPage(true)}
+          onGoDashboard={() => setAuthFlow(user?.onboardingCompleted ? null : "onboarding")}
         />
-        <HeroSection />
+        <HeroSection onOpenSignup={() => setAuthFlow("signup")} />
         <FeaturesSection />
         <HowItWorks />
         <AnalyticsDashboard />

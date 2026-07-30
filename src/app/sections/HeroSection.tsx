@@ -2,13 +2,14 @@ import { useState, useEffect } from "react";
 import { Mic, ArrowRight, BookOpen, Users, Smile, UtensilsCrossed } from "lucide-react";
 import { Sparkle, MiniStar, CloudPuff, MushroomTeal, MushroomPink, MushroomOrange, KioSVG, KinaSVG } from "@/app/components/decorative";
 import { heroEmotions, KIO_INFO, KINA_INFO } from "@/app/data/heroData";
+import { DEMO_VIDEO_URL } from "@/app/data/demoVideo";
 
 /**
  * 랜딩 히어로입니다. 왼쪽에는 헤드라인과 애니메이션 "아이가 말해요" 채팅 말풍선,
  * 오른쪽에는 나란히 선 키오와 키나가 있습니다. 캐릭터를 클릭하면 해당 캐릭터의
  * 인라인 "나는 누구일까요" 소개 카드가 열립니다.
  */
-export function HeroSection() {
+export function HeroSection({ onOpenSignup }: { onOpenSignup: () => void }) {
   const [emotionIdx, setEmotionIdx] = useState(0);
   const [fade, setFade] = useState(true);
   const [selectedChar, setSelectedChar] = useState<"kio" | "kina" | null>(null);
@@ -114,12 +115,16 @@ export function HeroSection() {
             </div>
 
             <div className="flex flex-col sm:flex-row gap-3">
-              <button className="font-bold px-8 py-4 rounded-2xl transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 flex items-center justify-center gap-2 text-sm text-white"
+              <button
+                onClick={onOpenSignup}
+                className="font-bold px-8 py-4 rounded-2xl transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 flex items-center justify-center gap-2 text-sm text-white"
                 style={{ background: "linear-gradient(135deg, #E879A0 0%, #C084FC 100%)" }}>
                 무료로 시작하기
                 <ArrowRight className="w-5 h-5" />
               </button>
-              <button className="font-semibold px-8 py-4 rounded-2xl transition-all flex items-center justify-center gap-2 text-sm"
+              <button
+                onClick={() => { if (DEMO_VIDEO_URL) window.open(DEMO_VIDEO_URL, "_blank", "noopener,noreferrer"); }}
+                className="font-semibold px-8 py-4 rounded-2xl transition-all flex items-center justify-center gap-2 text-sm"
                 style={{ background: "rgba(255,255,255,0.65)", border: "2px solid rgba(232,121,160,0.3)",
                   color: "#C0397A", backdropFilter: "blur(8px)" }}>
                 데모 영상 보기

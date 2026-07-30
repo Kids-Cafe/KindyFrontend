@@ -1,4 +1,4 @@
-import { Settings } from "lucide-react";
+import { PanelLeftClose, Settings } from "lucide-react";
 import { useAuth } from "@/app/auth/AuthContext";
 import { UserAvatar } from "@/app/auth/UserAvatar";
 import { getDisplayName } from "@/app/auth/getDisplayName";
@@ -15,6 +15,7 @@ export function FeatureSidebar({
   activeFeature,
   onSelectFeature,
   onOpenMyPage,
+  onCollapse,
 }: {
   kindergartenName: string;
   contextLabel: string;
@@ -22,15 +23,25 @@ export function FeatureSidebar({
   activeFeature: FeatureId;
   onSelectFeature: (id: FeatureId) => void;
   onOpenMyPage: () => void;
+  onCollapse: () => void;
 }) {
   const { user } = useAuth();
   if (!user) return null;
 
   return (
-    <div className="w-64 shrink-0 flex flex-col bg-card border-r" style={{ borderColor: "rgba(232,121,160,0.15)" }}>
-      <div className="px-4 py-4 border-b" style={{ borderColor: "rgba(232,121,160,0.12)" }}>
-        <p className="font-bold text-sm truncate" style={{ color: "#3B1355", fontFamily: "'Fredoka',sans-serif" }}>{kindergartenName}</p>
-        <p className="text-xs truncate mt-0.5" style={{ color: "#A06080" }}>{contextLabel}</p>
+    <div className="w-64 h-full shrink-0 flex flex-col bg-card border-r" style={{ borderColor: "rgba(232,121,160,0.15)" }}>
+      <div className="px-4 py-4 border-b flex items-center justify-between gap-2" style={{ borderColor: "rgba(232,121,160,0.12)" }}>
+        <div className="min-w-0">
+          <p className="font-bold text-sm truncate" style={{ color: "#3B1355", fontFamily: "'Fredoka',sans-serif" }}>{kindergartenName}</p>
+          <p className="text-xs truncate mt-0.5" style={{ color: "#A06080" }}>{contextLabel}</p>
+        </div>
+        <button
+          onClick={onCollapse}
+          aria-label="기능 목록 닫기"
+          className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-colors hover:bg-black/[0.04]"
+        >
+          <PanelLeftClose className="w-4 h-4" style={{ color: "#A06080" }} />
+        </button>
       </div>
 
       <div className="flex-1 overflow-y-auto px-2.5 py-3 space-y-0.5">

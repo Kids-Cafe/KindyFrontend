@@ -7,6 +7,8 @@ import type {
   ChatSender,
   DashboardData,
   DataCardType,
+  FeatureId,
+  PermissionKey,
 } from "@/app/dashboard/types";
 
 const AI_REPLIES: Record<AIPartnerId, string[]> = {
@@ -46,6 +48,44 @@ interface DashboardStoreValue {
   insertDataCard: (childId: string, sender: ChatSender, senderName: string, cardType: DataCardType) => void;
   /** AI와 채팅 중인 아이가 "말풍선 타이핑 중" 여부를 확인할 때 씁니다. */
   aiTyping: Record<string, boolean>;
+
+  /** 원장 전용: 공지사항 CRUD. */
+  addNotice: (title: string, body: string, authorName: string) => void;
+  togglePinNotice: (noticeId: string) => void;
+  deleteNotice: (noticeId: string) => void;
+
+  /** 원장 전용: 반 CRUD. */
+  addClass: (name: string) => void;
+  renameClass: (classId: string, name: string) => void;
+  deleteClass: (classId: string) => void;
+
+  /** 원장 전용: 권한 역할 관리. */
+  createRole: (name: string, color: string) => void;
+  updateRolePermissions: (roleId: string, permissions: PermissionKey[]) => void;
+  deleteRole: (roleId: string) => void;
+  assignTeacherRole: (teacherId: string, roleId: string, assigned: boolean) => void;
+
+  /** 선생님/원장: 준비물 작성. 학부모: 댓글. */
+  addSupplyItem: (classId: string, title: string, body: string, authorName: string, dueDate?: string) => void;
+  addSupplyComment: (classId: string, supplyId: string, authorName: string, authorRole: DashboardData["role"], text: string) => void;
+
+  /** 선생님/원장: 일정 등록. */
+  addScheduleEvent: (title: string, date: string, time: string | undefined, createdBy: string, classId?: string) => void;
+  deleteScheduleEvent: (eventId: string) => void;
+
+  /** 사진첩: 전 계정 공용. */
+  addPhoto: (url: string, uploadedBy: string, caption?: string) => void;
+  deletePhoto: (photoId: string) => void;
+
+  /** 선생님 전용: 특정 아이의 "부모 전용" 게시글 작성. */
+  addParentNote: (childId: string, authorName: string, text: string) => void;
+
+  /** 마이페이지 "아이 정보 변경"에서 씁니다. */
+  updateChildNickname: (childId: string, nickname: string) => void;
+
+  /** 메인페이지(홈)에 기능 위젯을 추가/제거합니다. */
+  addHomeWidget: (id: FeatureId) => void;
+  removeHomeWidget: (id: FeatureId) => void;
 }
 
 const DashboardStoreContext = createContext<DashboardStoreValue | null>(null);
@@ -170,9 +210,222 @@ export function DashboardStoreProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const addNotice = useCallback((title: string, body: string, authorName: string) => {
+    setData((prev) => ({
+      ...prev,
+      notices: [
+        { id: crypto.randomUUID(), kindergartenId: prev.kindergarten.id, title, body, authorName, createdAt: Date.now(), pinned: false },
+        ...prev.notices,
+      ],
+    }));
+  }, []);
+
+  const togglePinNotice = useCallback((noticeId: string) => {
+    setData((prev) => ({
+      ...prev,
+      notices: prev.notices.map((n) => (n.id === noticeId ? { ...n, pinned: !n.pinned } : n)),
+    }));
+  }, []);
+
+  const deleteNotice = useCallback((noticeId: string) => {
+    setData((prev) => ({ ...prev, notices: prev.notices.filter((n) => n.id !== noticeId) }));
+  }, []);
+
+  const addClass = useCallback((name: string) => {
+    setData((prev) => ({
+      ...prev,
+      classes: [...prev.classes, { id: crypto.randomUUID(), name, kindergartenId: prev.kindergarten.id }],
+    }));
+  }, []);
+
+  const renameClass = useCallback((classId: string, name: string) => {
+    setData((prev) => ({
+      ...prev,
+      classes: prev.classes.map((c) => (c.id === classId ? { ...c, name } : c)),
+    }));
+  }, []);
+
+  const deleteClass = useCallback((classId: string) => {
+    setData((prev) => ({ ...prev, classes: prev.classes.filter((c) => c.id !== classId) }));
+  }, []);
+
+  const createRole = useCallback((name: string, color: string) => {
+    setData((prev) => ({
+      ...prev,
+      roles: [...prev.roles, { id: crypto.randomUUID(), name, color, permissions: [] }],
+    }));
+  }, []);
+
+  const updateRolePermissions = useCallback((roleId: string, permissions: PermissionKey[]) => {
+    setData((prev) => ({
+      ...prev,
+      roles: prev.roles.map((r) => (r.id === roleId ? { ...r, permissions } : r)),
+    }));
+  }, []);
+
+  const deleteRole = useCallback((roleId: string) => {
+    setData((prev) => ({
+      ...prev,
+      roles: prev.roles.filter((r) => r.id !== roleId),
+      teachers: prev.teachers.map((t) => ({ ...t, roleIds: t.roleIds.filter((id) => id !== roleId) })),
+    }));
+  }, []);
+
+  const assignTeacherRole = useCallback((teacherId: string, roleId: string, assigned: boolean) => {
+    setData((prev) => ({
+      ...prev,
+      teachers: prev.teachers.map((t) =>
+        t.id !== teacherId
+          ? t
+          : { ...t, roleIds: assigned ? [...new Set([...t.roleIds, roleId])] : t.roleIds.filter((id) => id !== roleId) },
+      ),
+    }));
+  }, []);
+
+  const addSupplyItem = useCallback((classId: string, title: string, body: string, authorName: string, dueDate?: string) => {
+    setData((prev) => {
+      const list = prev.suppliesByClass[classId] ?? [];
+      const item = { id: crypto.randomUUID(), classId, title, body, authorName, createdAt: Date.now(), dueDate, comments: [] };
+      return { ...prev, suppliesByClass: { ...prev.suppliesByClass, [classId]: [item, ...list] } };
+    });
+  }, []);
+
+  const addSupplyComment = useCallback((classId: string, supplyId: string, authorName: string, authorRole: DashboardData["role"], text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    setData((prev) => {
+      const list = prev.suppliesByClass[classId] ?? [];
+      return {
+        ...prev,
+        suppliesByClass: {
+          ...prev.suppliesByClass,
+          [classId]: list.map((item) =>
+            item.id !== supplyId
+              ? item
+              : { ...item, comments: [...item.comments, { id: crypto.randomUUID(), authorName, authorRole, text: trimmed, createdAt: Date.now() }] },
+          ),
+        },
+      };
+    });
+  }, []);
+
+  const addScheduleEvent = useCallback((title: string, date: string, time: string | undefined, createdBy: string, classId?: string) => {
+    setData((prev) => ({
+      ...prev,
+      scheduleEvents: [
+        { id: crypto.randomUUID(), kindergartenId: prev.kindergarten.id, classId, title, date, time, createdBy, createdAt: Date.now() },
+        ...prev.scheduleEvents,
+      ],
+    }));
+  }, []);
+
+  const deleteScheduleEvent = useCallback((eventId: string) => {
+    setData((prev) => ({ ...prev, scheduleEvents: prev.scheduleEvents.filter((e) => e.id !== eventId) }));
+  }, []);
+
+  const addPhoto = useCallback((url: string, uploadedBy: string, caption?: string) => {
+    setData((prev) => ({
+      ...prev,
+      photos: [{ id: crypto.randomUUID(), scope: "kindergarten", scopeId: prev.kindergarten.id, url, caption, uploadedBy, takenAt: Date.now() }, ...prev.photos],
+    }));
+  }, []);
+
+  const deletePhoto = useCallback((photoId: string) => {
+    setData((prev) => ({ ...prev, photos: prev.photos.filter((p) => p.id !== photoId) }));
+  }, []);
+
+  const addParentNote = useCallback((childId: string, authorName: string, text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    setData((prev) => {
+      const list = prev.parentNotesByChild[childId] ?? [];
+      return {
+        ...prev,
+        parentNotesByChild: {
+          ...prev.parentNotesByChild,
+          [childId]: [{ id: crypto.randomUUID(), childId, authorName, text: trimmed, createdAt: Date.now() }, ...list],
+        },
+      };
+    });
+  }, []);
+
+  const updateChildNickname = useCallback((childId: string, nickname: string) => {
+    const trimmed = nickname.trim();
+    if (!trimmed) return;
+    setData((prev) => ({
+      ...prev,
+      me: prev.me?.id === childId ? { ...prev.me, nickname: trimmed } : prev.me,
+      myChild: prev.myChild?.id === childId ? { ...prev.myChild, nickname: trimmed } : prev.myChild,
+      classChildren: prev.classChildren.map((c) => (c.id === childId ? { ...c, nickname: trimmed } : c)),
+      myClassChildren: prev.myClassChildren?.map((c) => (c.id === childId ? { ...c, nickname: trimmed } : c)),
+    }));
+  }, []);
+
+  const addHomeWidget = useCallback((id: FeatureId) => {
+    setData((prev) => (prev.homeWidgets.includes(id) ? prev : { ...prev, homeWidgets: [...prev.homeWidgets, id] }));
+  }, []);
+
+  const removeHomeWidget = useCallback((id: FeatureId) => {
+    setData((prev) => ({ ...prev, homeWidgets: prev.homeWidgets.filter((w) => w !== id) }));
+  }, []);
+
   const value = useMemo<DashboardStoreValue>(
-    () => ({ data, choosePartner, sendAiMessage, sendThreadMessage, insertDataCard, aiTyping }),
-    [data, choosePartner, sendAiMessage, sendThreadMessage, insertDataCard, aiTyping],
+    () => ({
+      data,
+      choosePartner,
+      sendAiMessage,
+      sendThreadMessage,
+      insertDataCard,
+      aiTyping,
+      addNotice,
+      togglePinNotice,
+      deleteNotice,
+      addClass,
+      renameClass,
+      deleteClass,
+      createRole,
+      updateRolePermissions,
+      deleteRole,
+      assignTeacherRole,
+      addSupplyItem,
+      addSupplyComment,
+      addScheduleEvent,
+      deleteScheduleEvent,
+      addPhoto,
+      deletePhoto,
+      addParentNote,
+      updateChildNickname,
+      addHomeWidget,
+      removeHomeWidget,
+    }),
+    [
+      data,
+      choosePartner,
+      sendAiMessage,
+      sendThreadMessage,
+      insertDataCard,
+      aiTyping,
+      addNotice,
+      togglePinNotice,
+      deleteNotice,
+      addClass,
+      renameClass,
+      deleteClass,
+      createRole,
+      updateRolePermissions,
+      deleteRole,
+      assignTeacherRole,
+      addSupplyItem,
+      addSupplyComment,
+      addScheduleEvent,
+      deleteScheduleEvent,
+      addPhoto,
+      deletePhoto,
+      addParentNote,
+      updateChildNickname,
+      addHomeWidget,
+      removeHomeWidget,
+    ],
   );
 
   return <DashboardStoreContext.Provider value={value}>{children}</DashboardStoreContext.Provider>;
@@ -182,4 +435,12 @@ export function useDashboardStore(): DashboardStoreValue {
   const ctx = useContext(DashboardStoreContext);
   if (!ctx) throw new Error("useDashboardStore는 <DashboardStoreProvider> 안에서만 사용할 수 있어요.");
   return ctx;
+}
+
+/**
+ * `useDashboardStore`와 달리 Provider 밖에서 호출해도 던지지 않고 null을 돌려줍니다.
+ * 마이페이지처럼 대시보드 안/밖 양쪽에서 열릴 수 있는 화면에서 씁니다.
+ */
+export function useDashboardStoreOptional(): DashboardStoreValue | null {
+  return useContext(DashboardStoreContext);
 }

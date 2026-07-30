@@ -18,6 +18,8 @@ const KINDERGARTENS_KEY = "kindy.mock.kindergartens";
 interface MockUserRecord {
   id: string;
   name: string;
+  /** 로그인에 쓰는 아이디입니다. 성인은 이메일과 별개로 정하고, 아동은 이 값이 곧 아이디입니다. */
+  loginId: string;
   email: string;
   /** 성인은 가입 시 입력한 비밀번호, 아동은 아이디 비밀번호입니다. 소셜 가입 계정은 없습니다. */
   password: string;
@@ -102,9 +104,17 @@ export function isEmailTaken(email: string): boolean {
   return readUsers().some((u) => u.email.toLowerCase() === normalized);
 }
 
+/** 로그인 아이디 중복 여부입니다. 예전 데이터(loginId 없이 email만 있던 계정)도 함께 확인합니다. */
+export function isLoginIdTaken(loginId: string): boolean {
+  const normalized = loginId.trim().toLowerCase();
+  return readUsers().some((u) => (u.loginId ?? u.email).toLowerCase() === normalized);
+}
+
 export interface SignupPayload {
   name: string;
-  /** 성인은 이메일, 아동은 아이디입니다. */
+  /** 로그인에 쓰는 아이디입니다. */
+  loginId: string;
+  /** 성인은 실제 이메일, 아동은 아이디와 동일한 값을 넣습니다. */
   email: string;
   password: string;
   phone: string;
@@ -128,6 +138,7 @@ export function registerMockUser(payload: SignupPayload): AuthUser {
   const record: MockUserRecord = {
     id,
     name: payload.name,
+    loginId: payload.loginId,
     email: payload.email,
     password: payload.password,
     phone: payload.phone,
@@ -146,6 +157,7 @@ export function registerMockUser(payload: SignupPayload): AuthUser {
   return {
     id,
     name: payload.name,
+    loginId: payload.loginId,
     email: payload.email,
     provider: "email",
     joinedAt,
@@ -164,7 +176,7 @@ export type MockLoginResult =
 /** 아이디/비밀번호로 mock 저장소를 조회합니다. 백엔드가 붙기 전까지 로그인 검증을 흉내 냅니다. */
 export function loginMockUser(loginId: string, password: string): MockLoginResult {
   const normalized = loginId.trim().toLowerCase();
-  const record = readUsers().find((u) => u.email.toLowerCase() === normalized);
+  const record = readUsers().find((u) => (u.loginId ?? u.email).toLowerCase() === normalized);
   if (!record) return { ok: false, reason: "not-found" };
   if (record.password !== password) return { ok: false, reason: "wrong-password" };
 
@@ -173,6 +185,7 @@ export function loginMockUser(loginId: string, password: string): MockLoginResul
     user: {
       id: record.id,
       name: record.name,
+      loginId: record.loginId ?? record.email,
       email: record.email,
       provider: "email",
       joinedAt: record.joinedAt,
@@ -216,4 +229,106 @@ export function registerKindergarten(payload: KindergartenRegisterPayload): Kind
   };
   writeKindergartens([...readKindergartens(), info]);
   return info;
+}
+
+/** 햇살유치원(강남) 데모 계정 4종의 아이디입니다. 이미 심어져 있는지 확인할 때도 이 값을 씁니다. */
+export const DEMO_ACCOUNT_LOGIN_IDS = ["parent", "teacher2", "teacher1", "kid"] as const;
+
+/**
+ * 개발/데모용으로 햇살유치원(강남) 소속 학부모·교사·원장·아이 계정을 한 번에 심어줍니다.
+ * 이미 심어져 있으면(로그인 아이디가 겹치면) 아무 것도 하지 않는 멱등 함수입니다.
+ * 비밀번호는 전부 "1234"이며, 회원가입 폼의 비밀번호 규칙(8자 이상 등)은 mock 저장소에는
+ * 적용되지 않으므로 그대로 로그인할 수 있습니다.
+ */
+export function seedDemoAccounts(): void {
+  const existing = readUsers();
+  const already = new Set(existing.map((u) => (u.loginId ?? u.email).toLowerCase()));
+  if (DEMO_ACCOUNT_LOGIN_IDS.every((id) => already.has(id))) return;
+
+  const kindergarten: KindergartenInfo = { id: "kg-seed-1", name: "햇살유치원", zonecode: "06234", address: "서울특별시 강남구 테헤란로 123" };
+  const joinedAt = new Date().toISOString();
+  const password = "1234";
+
+  const demoUsers: MockUserRecord[] = [
+    {
+      id: "demo-haesal-parent",
+      name: "이학부모",
+      loginId: "parent",
+      email: "haesal.parent@kindy.demo",
+      password,
+      phone: "010-1111-1111",
+      zonecode: kindergarten.zonecode,
+      address: kindergarten.address,
+      addressDetail: "101동 101호",
+      joinedAt,
+      accountType: "adult",
+      nickname: "학부모",
+      role: "parent",
+      kindergarten,
+      onboardingCompleted: true,
+    },
+    {
+      id: "demo-haesal-teacher",
+      name: "박선생",
+      loginId: "teacher2",
+      email: "haesal.teacher@kindy.demo",
+      password,
+      phone: "010-2222-2222",
+      zonecode: kindergarten.zonecode,
+      address: kindergarten.address,
+      addressDetail: "",
+      joinedAt,
+      accountType: "adult",
+      nickname: "박선생님",
+      role: "teacher",
+      teacherRole: "teacher",
+      kindergarten,
+      onboardingCompleted: true,
+    },
+    {
+      id: "demo-haesal-director",
+      name: "최원장",
+      loginId: "teacher1",
+      email: "haesal.director@kindy.demo",
+      password,
+      phone: "010-3333-3333",
+      zonecode: kindergarten.zonecode,
+      address: kindergarten.address,
+      addressDetail: "",
+      joinedAt,
+      accountType: "adult",
+      nickname: "최원장님",
+      role: "teacher",
+      teacherRole: "director",
+      kindergarten: { ...kindergarten, businessRegNo: "123-45-67890" },
+      onboardingCompleted: true,
+    },
+    {
+      id: "demo-haesal-kid",
+      name: "김아이",
+      loginId: "kid",
+      email: "haesal_kid",
+      password,
+      phone: "010-1111-1111",
+      zonecode: "",
+      address: "",
+      addressDetail: "",
+      joinedAt,
+      accountType: "child",
+      birthDate: "2020-05-15",
+      gender: "male",
+      guardianName: "이학부모",
+      guardianPhone: "010-1111-1111",
+      nickname: "하늘이",
+      kindergarten,
+      onboardingCompleted: true,
+    },
+  ];
+
+  const withoutDemoDuplicates = existing.filter((u) => !DEMO_ACCOUNT_LOGIN_IDS.includes((u.loginId ?? u.email) as (typeof DEMO_ACCOUNT_LOGIN_IDS)[number]));
+  writeUsers([...withoutDemoDuplicates, ...demoUsers]);
+
+  if (!readKindergartens().some((kg) => kg.id === kindergarten.id)) {
+    writeKindergartens([...readKindergartens(), kindergarten]);
+  }
 }

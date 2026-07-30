@@ -12,13 +12,14 @@ import {
   isValidBirthDate,
   isMockVerificationCodeValid,
 } from "@/app/auth/validation";
-import { isEmailTaken, registerMockUser } from "@/app/auth/mockSignup";
+import { isEmailTaken, isLoginIdTaken, registerMockUser } from "@/app/auth/mockSignup";
 import { openAddressSearch } from "@/app/auth/addressSearch";
 import type { StudentGender } from "@/app/auth/types";
 import { useLeaveConfirmation } from "@/app/hooks/useLeaveConfirmation";
 
 interface FormState {
   name: string;
+  loginId: string;
   email: string;
   password: string;
   passwordConfirm: string;
@@ -31,6 +32,7 @@ interface FormState {
 
 const EMPTY_FORM: FormState = {
   name: "",
+  loginId: "",
   email: "",
   password: "",
   passwordConfirm: "",
@@ -40,6 +42,14 @@ const EMPTY_FORM: FormState = {
   jibunAddress: "",
   addressDetail: "",
 };
+
+type DuplicateCheckStatus = "idle" | "available" | "taken";
+interface EmailVerificationState {
+  sent: boolean;
+  code: string;
+  verified: boolean;
+}
+const EMPTY_EMAIL_VERIFICATION: EmailVerificationState = { sent: false, code: "", verified: false };
 
 interface ChildFormState {
   loginId: string;
@@ -63,12 +73,12 @@ const EMPTY_CHILD_FORM: ChildFormState = {
 
 /**
  * 정보 입력 전에 거치는 단계입니다: 계정 유형 선택 →
- * (아동이면) 법적대리인 동의 → 법적대리인 인증(목업) → 정보 입력 →
+ * (아동이면) 법정대리인 동의 → 법정대리인 인증(목업) → 정보 입력 →
  * (성인이면) 정보 입력.
  */
 type SignupStep = "ageSelect" | "form" | "childConsent" | "childVerify" | "childForm";
 
-type FieldErrors = Partial<Record<"name" | "email" | "password" | "passwordConfirm" | "phone" | "address" | "addressDetail", string>>;
+type FieldErrors = Partial<Record<"name" | "loginId" | "email" | "password" | "passwordConfirm" | "phone" | "address" | "addressDetail", string>>;
 
 type ChildFieldErrors = Partial<Record<"loginId" | "password" | "passwordConfirm" | "name" | "phone" | "birthDate" | "gender", string>>;
 
@@ -94,6 +104,8 @@ export function SignupScreen({
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [addressType, setAddressType] = useState<"road" | "jibun">("road");
+  const [loginIdStatus, setLoginIdStatus] = useState<DuplicateCheckStatus>("idle");
+  const [emailVerification, setEmailVerification] = useState<EmailVerificationState>(EMPTY_EMAIL_VERIFICATION);
 
   // ── 아동 가입 전용 상태 ──
   const [consentChecked, setConsentChecked] = useState(false);
@@ -105,6 +117,7 @@ export function SignupScreen({
   const [guardianVerified, setGuardianVerified] = useState(false);
   const [childForm, setChildForm] = useState<ChildFormState>(EMPTY_CHILD_FORM);
   const [childErrors, setChildErrors] = useState<ChildFieldErrors>({});
+  const [childLoginIdStatus, setChildLoginIdStatus] = useState<DuplicateCheckStatus>("idle");
 
   const { setSession } = useAuth();
 
@@ -115,17 +128,75 @@ export function SignupScreen({
 
   function update<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
+    if (key === "loginId") setLoginIdStatus("idle");
+    if (key === "email") setEmailVerification(EMPTY_EMAIL_VERIFICATION);
   }
 
   function updateChild<K extends keyof ChildFormState>(key: K, value: ChildFormState[K]) {
     setChildForm((prev) => ({ ...prev, [key]: value }));
+    if (key === "loginId") setChildLoginIdStatus("idle");
+  }
+
+  function handleCheckLoginId() {
+    if (!isValidLoginId(form.loginId)) {
+      setLoginIdStatus("idle");
+      setErrors((prev) => ({ ...prev, loginId: "4~20자의 영문/숫자, -, _ 만 사용할 수 있어요" }));
+      return;
+    }
+    if (isLoginIdTaken(form.loginId)) {
+      setLoginIdStatus("taken");
+      setErrors((prev) => ({ ...prev, loginId: "이미 사용 중인 아이디예요" }));
+    } else {
+      setLoginIdStatus("available");
+      setErrors((prev) => ({ ...prev, loginId: undefined }));
+    }
+  }
+
+  function handleSendEmailVerification() {
+    if (!isValidEmail(form.email)) {
+      setErrors((prev) => ({ ...prev, email: "올바른 이메일 주소를 입력해주세요" }));
+      return;
+    }
+    if (isEmailTaken(form.email)) {
+      setErrors((prev) => ({ ...prev, email: "이미 가입된 이메일이에요" }));
+      return;
+    }
+    setErrors((prev) => ({ ...prev, email: undefined }));
+    setEmailVerification({ sent: true, code: "", verified: false });
+  }
+
+  function handleConfirmEmailVerification() {
+    if (!isMockVerificationCodeValid(emailVerification.code)) {
+      setErrors((prev) => ({ ...prev, email: "인증번호 6자리를 입력해주세요" }));
+      return;
+    }
+    setErrors((prev) => ({ ...prev, email: undefined }));
+    setEmailVerification((prev) => ({ ...prev, verified: true }));
+  }
+
+  function handleCheckChildLoginId() {
+    if (!isValidLoginId(childForm.loginId)) {
+      setChildLoginIdStatus("idle");
+      setChildErrors((prev) => ({ ...prev, loginId: "4~20자의 영문/숫자, -, _ 만 사용할 수 있어요" }));
+      return;
+    }
+    if (isLoginIdTaken(childForm.loginId)) {
+      setChildLoginIdStatus("taken");
+      setChildErrors((prev) => ({ ...prev, loginId: "이미 사용 중인 아이디예요" }));
+    } else {
+      setChildLoginIdStatus("available");
+      setChildErrors((prev) => ({ ...prev, loginId: undefined }));
+    }
   }
 
   function validate(): FieldErrors {
     const next: FieldErrors = {};
     if (!form.name.trim()) next.name = "이름을 입력해주세요";
+    if (!isValidLoginId(form.loginId)) next.loginId = "4~20자의 영문/숫자, -, _ 만 사용할 수 있어요";
+    else if (loginIdStatus !== "available") next.loginId = "아이디 중복확인을 먼저 해주세요";
     if (!isValidEmail(form.email)) next.email = "올바른 이메일 주소를 입력해주세요";
     else if (isEmailTaken(form.email)) next.email = "이미 가입된 이메일이에요";
+    else if (!emailVerification.verified) next.email = "이메일 인증을 완료해주세요";
     if (!isPasswordValid(form.password)) next.password = "8자 이상, 영문/숫자/특수문자 중 2가지 이상 조합해주세요";
     else if (form.password !== form.passwordConfirm) next.passwordConfirm = "비밀번호가 일치하지 않아요";
     if (!isValidPhone(form.phone)) next.phone = "올바른 전화번호를 입력해주세요 (예: 010-1234-5678)";
@@ -137,7 +208,7 @@ export function SignupScreen({
   function validateChild(): ChildFieldErrors {
     const next: ChildFieldErrors = {};
     if (!isValidLoginId(childForm.loginId)) next.loginId = "4~20자의 영문/숫자, -, _ 만 사용할 수 있어요";
-    else if (isEmailTaken(childForm.loginId)) next.loginId = "이미 사용 중인 아이디예요";
+    else if (childLoginIdStatus !== "available") next.loginId = "아이디 중복확인을 먼저 해주세요";
     if (!isPasswordValid(childForm.password)) next.password = "8자 이상, 영문/숫자/특수문자 중 2가지 이상 조합해주세요";
     else if (childForm.password !== childForm.passwordConfirm) next.passwordConfirm = "비밀번호가 일치하지 않아요";
     if (!childForm.name.trim()) next.name = "이름을 입력해주세요";
@@ -160,6 +231,7 @@ export function SignupScreen({
   function completeSignup() {
     const user = registerMockUser({
       name: form.name.trim(),
+      loginId: form.loginId.trim(),
       email: form.email.trim(),
       password: form.password,
       phone: form.phone.trim(),
@@ -175,6 +247,7 @@ export function SignupScreen({
   function completeChildSignup() {
     const user = registerMockUser({
       name: childForm.name.trim(),
+      loginId: childForm.loginId.trim(),
       email: childForm.loginId.trim(),
       password: childForm.password,
       phone: childForm.phone.trim(),
@@ -203,8 +276,8 @@ export function SignupScreen({
   }
 
   function handleSendVerificationCode() {
-    if (!guardianName.trim()) return setGuardianStepError("법적대리인 이름을 입력해주세요");
-    if (!isValidPhone(guardianPhone)) return setGuardianStepError("법적대리인 휴대폰 번호를 정확히 입력해주세요");
+    if (!guardianName.trim()) return setGuardianStepError("법정대리인 이름을 입력해주세요");
+    if (!isValidPhone(guardianPhone)) return setGuardianStepError("법정대리인 휴대폰 번호를 정확히 입력해주세요");
     setGuardianStepError(null);
     setVerificationSent(true);
     setGuardianVerified(false);
@@ -310,7 +383,7 @@ export function SignupScreen({
                 className="w-full text-left rounded-2xl px-5 py-4 transition-all hover:opacity-90 active:scale-[0.98]"
                 style={{ height: 76, border: "1.5px solid #E5E7EB", background: "#FAFAFA" }}>
                 <p className="text-sm font-bold" style={{ color: "#1F0A3C" }}>아동 회원가입</p>
-                <p className="text-xs mt-0.5" style={{ color: "#9CA3AF" }}>법적대리인 동의 후 아이 계정을 만들게요</p>
+                <p className="text-xs mt-0.5" style={{ color: "#9CA3AF" }}>법정대리인 동의 후 아이 계정을 만들게요</p>
               </button>
             </div>
 
@@ -326,10 +399,10 @@ export function SignupScreen({
               <KinaSVG className="h-28 w-auto" />
             </div>
             <h1 className="text-center text-2xl font-bold mb-2" style={{ fontFamily: "'Fredoka',sans-serif", color: "#1F0A3C" }}>
-              법적대리인의 동의가 필요해요
+              법정대리인의 동의가 필요해요
             </h1>
             <p className="text-center text-sm mb-6" style={{ color: "#9CA3AF" }}>
-              아이 계정을 만들려면 법적대리인(부모님 등)이 정보 제공에 동의하고<br />직접 본인 인증을 진행해야 해요
+              아이 계정을 만들려면 법정대리인(부모님 등)이 정보 제공에 동의하고<br />직접 본인 인증을 진행해야 해요
             </p>
 
             <button
@@ -346,7 +419,7 @@ export function SignupScreen({
                 {consentChecked && <Check className="w-3.5 h-3.5" style={{ color: "white" }} strokeWidth={3} />}
               </span>
               <span className="text-sm" style={{ color: "#1F0A3C" }}>
-                <span className="font-bold">(필수)</span> 법적대리인은 아이의 회원가입을 위해 이름, 연락처 등의 개인정보를
+                <span className="font-bold">(필수)</span> 법정대리인은 아이의 회원가입을 위해 이름, 연락처 등의 개인정보를
                 제공하는 것에 동의합니다.
               </span>
             </button>
@@ -369,22 +442,22 @@ export function SignupScreen({
           <div className="flex-1 flex flex-col justify-center px-8 md:px-12 py-8 max-w-md w-full mx-auto">
             <div className="mb-8">
               <h1 className="text-3xl font-bold mb-2" style={{ fontFamily: "'Fredoka',sans-serif", color: "#1F0A3C" }}>
-                법적대리인 본인인증
+                법정대리인 본인인증
               </h1>
-              <p className="text-sm" style={{ color: "#9CA3AF" }}>휴대폰 번호로 법적대리인 본인인증을 진행해주세요 (테스트 인증)</p>
+              <p className="text-sm" style={{ color: "#9CA3AF" }}>휴대폰 번호로 법정대리인 본인인증을 진행해주세요 (테스트 인증)</p>
             </div>
 
             <form onSubmit={handleVerifyFormSubmit}>
             <div className="space-y-3 mb-2">
-              <Field label="법적대리인 이름">
-                <input type="text" placeholder="법적대리인 이름을 입력해주세요"
+              <Field label="법정대리인 이름">
+                <input type="text" placeholder="법정대리인 이름을 입력해주세요"
                   value={guardianName} onChange={(e) => setGuardianName(e.target.value)}
                   disabled={verificationSent}
                   className="w-full rounded-2xl px-4 outline-none transition-all text-sm disabled:opacity-60"
                   style={inputStyle} onFocus={focusIn} onBlur={focusOut} />
               </Field>
 
-              <Field label="법적대리인 휴대폰 번호">
+              <Field label="법정대리인 휴대폰 번호">
                 <div className="flex gap-2">
                   <input type="tel" placeholder="010-1234-5678"
                     value={guardianPhone} onChange={(e) => setGuardianPhone(e.target.value)}
@@ -447,10 +520,21 @@ export function SignupScreen({
             <form onSubmit={(e) => { e.preventDefault(); handleChildSubmit(); }}>
             <div className="space-y-3 mb-2">
               <Field label="아이디">
-                <input type="text" placeholder="4~20자의 영문/숫자"
-                  value={childForm.loginId} onChange={(e) => updateChild("loginId", e.target.value)}
-                  className="w-full rounded-2xl px-4 outline-none transition-all text-sm"
-                  style={inputStyle} onFocus={focusIn} onBlur={focusOut} />
+                <div className="flex gap-2">
+                  <input type="text" placeholder="4~20자의 영문/숫자"
+                    value={childForm.loginId} onChange={(e) => updateChild("loginId", e.target.value)}
+                    className="flex-1 rounded-2xl px-4 outline-none transition-all text-sm"
+                    style={inputStyle} onFocus={focusIn} onBlur={focusOut} />
+                  <button type="button" onClick={handleCheckChildLoginId}
+                    className="px-4 rounded-2xl text-sm font-bold whitespace-nowrap"
+                    style={{
+                      height: 54,
+                      background: childLoginIdStatus === "available" ? "#DCFCE7" : "#F3F4F6",
+                      color: childLoginIdStatus === "available" ? "#16A34A" : "#1F0A3C",
+                    }}>
+                    {childLoginIdStatus === "available" ? "사용 가능" : "중복확인"}
+                  </button>
+                </div>
               </Field>
               <ErrorText message={childErrors.loginId} />
 
@@ -488,10 +572,7 @@ export function SignupScreen({
               <ErrorText message={childErrors.phone} />
 
               <Field label="생년월일">
-                <input type="date" placeholder="YYYY-MM-DD"
-                  value={childForm.birthDate} onChange={(e) => updateChild("birthDate", e.target.value)}
-                  className="w-full rounded-2xl px-4 outline-none transition-all text-sm"
-                  style={inputStyle} onFocus={focusIn} onBlur={focusOut} />
+                <BirthDatePicker value={childForm.birthDate} onChange={(v) => updateChild("birthDate", v)} />
               </Field>
               <ErrorText message={childErrors.birthDate} />
 
@@ -558,11 +639,60 @@ export function SignupScreen({
             </Field>
             <ErrorText message={errors.name} />
 
-            <Field label="이메일 (아이디)">
-              <input type="email" placeholder="이메일 주소를 입력해주세요"
-                value={form.email} onChange={(e) => update("email", e.target.value)}
-                className="w-full rounded-2xl px-4 outline-none transition-all text-sm"
-                style={inputStyle} onFocus={focusIn} onBlur={focusOut} />
+            <Field label="아이디">
+              <div className="flex gap-2">
+                <input type="text" placeholder="4~20자의 영문/숫자"
+                  value={form.loginId} onChange={(e) => update("loginId", e.target.value)}
+                  className="flex-1 rounded-2xl px-4 outline-none transition-all text-sm"
+                  style={inputStyle} onFocus={focusIn} onBlur={focusOut} />
+                <button type="button" onClick={handleCheckLoginId}
+                  className="px-4 rounded-2xl text-sm font-bold whitespace-nowrap"
+                  style={{
+                    height: 54,
+                    background: loginIdStatus === "available" ? "#DCFCE7" : "#F3F4F6",
+                    color: loginIdStatus === "available" ? "#16A34A" : "#1F0A3C",
+                  }}>
+                  {loginIdStatus === "available" ? "사용 가능" : "중복확인"}
+                </button>
+              </div>
+            </Field>
+            <ErrorText message={errors.loginId} />
+
+            <Field label="이메일">
+              <div className="flex gap-2">
+                <input type="email" placeholder="이메일 주소를 입력해주세요"
+                  value={form.email} onChange={(e) => update("email", e.target.value)}
+                  disabled={emailVerification.sent}
+                  className="flex-1 rounded-2xl px-4 outline-none transition-all text-sm disabled:opacity-60"
+                  style={inputStyle} onFocus={focusIn} onBlur={focusOut} />
+                <button type="button" onClick={handleSendEmailVerification} disabled={emailVerification.sent}
+                  className="px-4 rounded-2xl text-sm font-bold whitespace-nowrap disabled:opacity-60"
+                  style={{ height: 54, background: "#F3F4F6", color: "#1F0A3C" }}>
+                  {emailVerification.sent ? "전송됨" : "인증번호 받기"}
+                </button>
+              </div>
+              {emailVerification.sent && (
+                <div className="flex gap-2 mt-2">
+                  <input type="text" inputMode="numeric" placeholder="6자리 숫자를 입력해주세요 (예: 123456)"
+                    value={emailVerification.code}
+                    onChange={(e) => setEmailVerification((prev) => ({ ...prev, code: e.target.value }))}
+                    disabled={emailVerification.verified}
+                    className="flex-1 rounded-2xl px-4 outline-none transition-all text-sm disabled:opacity-60"
+                    style={inputStyle} onFocus={focusIn} onBlur={focusOut} />
+                  <button type="button" onClick={handleConfirmEmailVerification} disabled={emailVerification.verified}
+                    className="px-4 rounded-2xl text-sm font-bold whitespace-nowrap disabled:opacity-60"
+                    style={{
+                      height: 54,
+                      background: emailVerification.verified ? "#DCFCE7" : "#F3F4F6",
+                      color: emailVerification.verified ? "#16A34A" : "#1F0A3C",
+                    }}>
+                    {emailVerification.verified ? "인증완료" : "인증 확인"}
+                  </button>
+                </div>
+              )}
+              {emailVerification.sent && !emailVerification.verified && (
+                <p className="text-xs mt-1.5" style={{ color: "#9CA3AF" }}>테스트 환경이라 아무 숫자 6자리나 입력하시면 돼요</p>
+              )}
             </Field>
             <ErrorText message={errors.email} />
 
@@ -658,4 +788,126 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 function ErrorText({ message }: { message?: string }) {
   if (!message) return null;
   return <p className="text-xs font-semibold -mt-2" style={{ color: "#DC2626" }}>{message}</p>;
+}
+
+type DatePanel = "year" | "month" | "day" | null;
+
+/**
+ * 캘린더 대신 년/월/일을 각각 버튼 그리드로 고르는 생년월일 선택기입니다.
+ * 오늘 이후 날짜는 목록에서 아예 빠지므로 미래 날짜를 고를 수 없습니다.
+ */
+function BirthDatePicker({ value, onChange }: { value: string; onChange: (next: string) => void }) {
+  const [parts, setParts] = useState<{ y: number | null; m: number | null; d: number | null }>(() => {
+    if (!value) return { y: null, m: null, d: null };
+    const [y, m, d] = value.split("-").map(Number);
+    return { y, m, d };
+  });
+  const [panel, setPanel] = useState<DatePanel>(null);
+
+  const today = new Date();
+  const todayY = today.getFullYear();
+  const todayM = today.getMonth() + 1;
+  const todayD = today.getDate();
+  const minYear = todayY - 100;
+
+  const years = Array.from({ length: todayY - minYear + 1 }, (_, i) => todayY - i);
+  const maxMonth = parts.y === todayY ? todayM : 12;
+  const months = Array.from({ length: maxMonth }, (_, i) => i + 1);
+  const daysInMonth = parts.y && parts.m ? new Date(parts.y, parts.m, 0).getDate() : 31;
+  const maxDay = parts.y === todayY && parts.m === todayM ? todayD : daysInMonth;
+  const days = Array.from({ length: maxDay }, (_, i) => i + 1);
+
+  function commit(next: { y: number | null; m: number | null; d: number | null }) {
+    setParts(next);
+    setPanel(null);
+    if (next.y && next.m && next.d) {
+      onChange(`${next.y}-${String(next.m).padStart(2, "0")}-${String(next.d).padStart(2, "0")}`);
+    } else {
+      onChange("");
+    }
+  }
+
+  function selectYear(y: number) {
+    let m = parts.m;
+    let d = parts.d;
+    if (y === todayY && m && m > todayM) m = todayM;
+    if (y === todayY && m === todayM && d && d > todayD) d = todayD;
+    commit({ y, m, d });
+  }
+
+  function selectMonth(m: number) {
+    let d = parts.d;
+    const dim = parts.y ? new Date(parts.y, m, 0).getDate() : 31;
+    if (d && d > dim) d = dim;
+    if (parts.y === todayY && m === todayM && d && d > todayD) d = todayD;
+    commit({ y: parts.y, m, d });
+  }
+
+  function selectDay(d: number) {
+    commit({ y: parts.y, m: parts.m, d });
+  }
+
+  return (
+    <div>
+      <div className="grid grid-cols-3 gap-2">
+        <DatePickerButton label={parts.y ? `${parts.y}년` : "년"} active={panel === "year"}
+          onClick={() => setPanel((p) => (p === "year" ? null : "year"))} />
+        <DatePickerButton label={parts.m ? `${parts.m}월` : "월"} active={panel === "month"} disabled={!parts.y}
+          onClick={() => setPanel((p) => (p === "month" ? null : "month"))} />
+        <DatePickerButton label={parts.d ? `${parts.d}일` : "일"} active={panel === "day"} disabled={!parts.y || !parts.m}
+          onClick={() => setPanel((p) => (p === "day" ? null : "day"))} />
+      </div>
+
+      {panel === "year" && (
+        <div className="mt-2 max-h-40 overflow-y-auto grid grid-cols-4 gap-1.5 rounded-2xl p-2" style={{ border: "1.5px solid #E5E7EB", background: "#FAFAFA" }}>
+          {years.map((y) => (
+            <DateOptionButton key={y} label={String(y)} selected={y === parts.y} onClick={() => selectYear(y)} />
+          ))}
+        </div>
+      )}
+      {panel === "month" && (
+        <div className="mt-2 grid grid-cols-4 gap-1.5 rounded-2xl p-2" style={{ border: "1.5px solid #E5E7EB", background: "#FAFAFA" }}>
+          {months.map((m) => (
+            <DateOptionButton key={m} label={`${m}월`} selected={m === parts.m} onClick={() => selectMonth(m)} />
+          ))}
+        </div>
+      )}
+      {panel === "day" && (
+        <div className="mt-2 max-h-40 overflow-y-auto grid grid-cols-7 gap-1.5 rounded-2xl p-2" style={{ border: "1.5px solid #E5E7EB", background: "#FAFAFA" }}>
+          {days.map((d) => (
+            <DateOptionButton key={d} label={String(d)} selected={d === parts.d} onClick={() => selectDay(d)} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DatePickerButton({ label, active, disabled, onClick }: { label: string; active: boolean; disabled?: boolean; onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} disabled={disabled}
+      className="rounded-2xl text-sm font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+      style={{
+        height: 54,
+        background: active ? "#FDF2F8" : "#FAFAFA",
+        border: active ? "1.5px solid #E879A0" : "1.5px solid #E5E7EB",
+        color: "#1F0A3C",
+      }}>
+      {label}
+    </button>
+  );
+}
+
+function DateOptionButton({ label, selected, onClick }: { label: string; selected: boolean; onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick}
+      className="rounded-xl text-xs font-semibold py-2 transition-all"
+      style={{
+        background: selected ? "#E879A0" : "white",
+        color: selected ? "white" : "#1F0A3C",
+        border: "1px solid #E5E7EB",
+      }}>
+      {label}
+    </button>
+  );
 }

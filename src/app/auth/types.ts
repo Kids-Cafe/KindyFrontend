@@ -12,7 +12,7 @@ export type UserRole = "parent" | "teacher";
 /** 선생님 계정의 세부 역할입니다. */
 export type TeacherRole = "director" | "teacher";
 
-/** 회원가입 시 구분하는 계정 유형입니다. 성인은 본인이 직접, 아동은 법적대리인 동의를 거쳐 가입합니다. */
+/** 회원가입 시 구분하는 계정 유형입니다. 성인은 본인이 직접, 아동은 법정대리인 동의를 거쳐 가입합니다. */
 export type AccountType = "adult" | "child";
 
 /** 아동 계정의 학생 성별입니다. */
@@ -34,6 +34,8 @@ export interface AuthUser {
   id: string;
   name: string;
   email: string;
+  /** 로그인에 사용하는 아이디. 이메일 직접 가입 계정만 있습니다. */
+  loginId?: string;
   /** 프로필 이미지 URL. 없으면 이름 첫 글자로 아바타를 그립니다. */
   avatarUrl?: string;
   /** 이 계정이 어떤 소셜 제공자로 로그인했는지. 이메일 직접 가입은 "email"입니다. */
@@ -47,16 +49,22 @@ export interface AuthUser {
   kindergarten?: KindergartenInfo;
   /** 온보딩 위저드를 끝까지 마쳤는지 */
   onboardingCompleted?: boolean;
-  /** 성인 회원가입인지 법적대리인 동의를 거친 아동 회원가입인지 */
+  /** 성인 회원가입인지 법정대리인 동의를 거친 아동 회원가입인지 */
   accountType?: AccountType;
   /** 아동 계정의 생년월일 (YYYY-MM-DD) */
   birthDate?: string;
   /** 아동 계정의 학생 성별 */
   gender?: StudentGender;
-  /** 아동 계정 가입 시 인증한 법적대리인 이름 */
+  /** 아동 계정 가입 시 인증한 법정대리인 이름 */
   guardianName?: string;
-  /** 아동 계정 가입 시 등록한 법적대리인 연락처 (비밀번호 재발급용) */
+  /** 아동 계정 가입 시 등록한 법정대리인 연락처 (비밀번호 재발급용) */
   guardianPhone?: string;
+  /** 마이페이지에서 등록/수정하는 연락처 */
+  phone?: string;
+  /** 마이페이지에서 등록/수정하는 자택 주소 */
+  address?: string;
+  addressDetail?: string;
+  zonecode?: string;
 }
 
 /** localStorage에 저장되는 세션 형태입니다. */

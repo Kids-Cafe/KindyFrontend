@@ -23,7 +23,29 @@ export function MemberSidebar({
   onSelectFeature: (id: FeatureId) => void;
 }) {
   return (
-    <div className="w-64 shrink-0 border-l bg-card overflow-y-auto px-3 py-4" style={{ borderColor: "rgba(232,121,160,0.15)" }}>
+    <div className="w-64 h-full shrink-0 border-l bg-card overflow-y-auto px-3 py-4" style={{ borderColor: "rgba(232,121,160,0.15)" }}>
+      {data.role === "director" && (
+        <>
+          <GroupLabel>교사 — {data.teachers.length}</GroupLabel>
+          <div className="space-y-1">
+            {data.teachers.map((teacher) => (
+              <div key={teacher.id} className="flex items-center gap-2.5 px-2 py-2">
+                <span
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0"
+                  style={{ background: "linear-gradient(135deg,#60A5FA,#3B82F6)" }}
+                >
+                  {teacher.name.charAt(0)}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-bold truncate" style={{ color: "#3B1355" }}>{teacher.name}</span>
+                  <span className="block text-xs truncate" style={{ color: "#A06080" }}>{teacher.className}</span>
+                </span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
       {data.role === "teacher" && (
         <>
           <GroupLabel>학생 — {(data.myClassChildren ?? []).length}</GroupLabel>

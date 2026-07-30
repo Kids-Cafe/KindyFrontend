@@ -8,7 +8,13 @@ import type {
   TeacherRecord,
   ChatThread,
   AiChatThread,
+  ParentNote,
 } from "@/app/dashboard/types";
+import { buildClasses, buildRoles, buildTeachers } from "@/app/dashboard/mock/classesAndRoles";
+import { buildNotices } from "@/app/dashboard/mock/notices";
+import { buildSupplies } from "@/app/dashboard/mock/supplies";
+import { buildSchedule } from "@/app/dashboard/mock/schedule";
+import { buildPhotos } from "@/app/dashboard/mock/photos";
 
 /**
  * 대시보드 목업 데이터입니다. 백엔드가 없는 상태에서도 화면이 그럴듯하게 채워지도록,
@@ -152,6 +158,8 @@ export function buildDashboardData(user: AuthUser): DashboardData {
   const kindergartenName = user.kindergarten?.name ?? "새싹유치원";
   const kindergartenId = user.kindergarten?.id ?? "kg-mock";
 
+  const isDirector = user.role === "teacher" && user.teacherRole === "director";
+
   const teacher: TeacherRecord = {
     id: user.role === "teacher" ? user.id : "teacher-seed",
     name: user.role === "teacher" ? displayName : "박지현 선생님",
@@ -159,6 +167,7 @@ export function buildDashboardData(user: AuthUser): DashboardData {
     className: "해바라기반",
     kindergartenId,
     kindergartenName,
+    roleIds: isDirector ? [] : ["role-senior"],
   };
 
   let seedChildren = SEED_CHILDREN.map((c) => ({
@@ -169,7 +178,7 @@ export function buildDashboardData(user: AuthUser): DashboardData {
   })) as ChildRecord[];
 
   const role: DashboardData["role"] =
-    user.accountType === "child" ? "child" : user.role === "teacher" ? "teacher" : "parent";
+    user.accountType === "child" ? "child" : user.role === "teacher" ? (isDirector ? "director" : "teacher") : "parent";
 
   let me: ChildRecord | undefined;
   let myChild: ChildRecord | undefined;
@@ -197,13 +206,26 @@ export function buildDashboardData(user: AuthUser): DashboardData {
   const reportsByChild: DashboardData["reportsByChild"] = {};
   const threadsByChild: DashboardData["threadsByChild"] = {};
   const aiThreadsByChild: DashboardData["aiThreadsByChild"] = {};
+  const parentNotesByChild: DashboardData["parentNotesByChild"] = {};
 
   for (const child of seedChildren) {
     diaryByChild[child.id] = buildDiary(child);
     reportsByChild[child.id] = buildReports(child, seedFromId(child.id));
     threadsByChild[child.id] = buildThread(child, teacher);
     aiThreadsByChild[child.id] = buildAiThread(child);
+    parentNotesByChild[child.id] = buildParentNotes(child, teacher);
   }
+
+  const directorName = isDirector ? displayName : "김민지 원장";
+
+  const defaultHomeWidgets: DashboardData["homeWidgets"] =
+    role === "teacher"
+      ? ["reports", "teacher-chat"]
+      : role === "parent"
+        ? ["schedule", "photos"]
+        : role === "director"
+          ? ["classes", "members"]
+          : [];
 
   return {
     role,
@@ -217,5 +239,27 @@ export function buildDashboardData(user: AuthUser): DashboardData {
     reportsByChild,
     threadsByChild,
     aiThreadsByChild,
+
+    classes: buildClasses(kindergartenId),
+    roles: buildRoles(),
+    teachers: buildTeachers(kindergartenId, kindergartenName, teacher),
+    notices: buildNotices(kindergartenId, directorName),
+    suppliesByClass: { [teacher.classId]: buildSupplies(teacher.classId, teacher.name) },
+    scheduleEvents: buildSchedule(kindergartenId, teacher.classId, teacher.name),
+    photos: buildPhotos(kindergartenId),
+    parentNotesByChild,
+    homeWidgets: defaultHomeWidgets,
   };
+}
+
+function buildParentNotes(child: ChildRecord, teacher: TeacherRecord): ParentNote[] {
+  return [
+    {
+      id: `${child.id}-note-1`,
+      childId: child.id,
+      authorName: teacher.name,
+      text: `${child.nickname}가 요즘 부쩍 자신감이 늘었어요. 집에서도 스스로 해보려는 모습을 보이면 많이 칭찬해주세요!`,
+      createdAt: 1785300000000 - 1000 * 60 * 60 * 30,
+    },
+  ];
 }
