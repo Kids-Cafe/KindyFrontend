@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { Megaphone, Pin, Trash2, Plus } from "lucide-react";
+import { Megaphone, Pin, Trash2, Plus, Bell, BellOff } from "lucide-react";
 import { useDashboardStore } from "@/app/dashboard/DashboardStoreContext";
 import { useAuth } from "@/app/auth/AuthContext";
 import { getDisplayName } from "@/app/auth/getDisplayName";
+import { useConfirm } from "@/app/components/ConfirmDialog";
 
 function formatDateTime(ms: number): string {
   const d = new Date(ms);
@@ -10,23 +11,26 @@ function formatDateTime(ms: number): string {
 }
 
 /**
- * 유치원 공지사항 목록입니다. `canManage`가 켜지면(원장 전용) 작성/고정/삭제 컨트롤이 함께 표시되고,
+ * 유치원 공지사항 목록입니다. `canManage`가 켜지면(원장 전용) 작성/고정/배너/삭제 컨트롤이 함께 표시되고,
  * 그 외 역할(선생님/부모/아이)에서는 읽기 전용 목록으로만 씁니다.
  */
 export function NoticesFeature({ canManage = false }: { canManage?: boolean }) {
   const { user } = useAuth();
-  const { data, addNotice, togglePinNotice, deleteNotice } = useDashboardStore();
+  const { data, addNotice, togglePinNotice, toggleNoticeBanner, deleteNotice } = useDashboardStore();
+  const { ask, dialog } = useConfirm();
   const [composing, setComposing] = useState(false);
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
+  const [bannerEnabled, setBannerEnabled] = useState(false);
 
   const sorted = [...data.notices].sort((a, b) => (a.pinned === b.pinned ? b.createdAt - a.createdAt : a.pinned ? -1 : 1));
 
   function handleSubmit() {
     if (!title.trim() || !body.trim() || !user) return;
-    addNotice(title.trim(), body.trim(), getDisplayName(user));
+    addNotice(title.trim(), body.trim(), getDisplayName(user), bannerEnabled);
     setTitle("");
     setBody("");
+    setBannerEnabled(false);
     setComposing(false);
   }
 
@@ -65,6 +69,10 @@ export function NoticesFeature({ canManage = false }: { canManage?: boolean }) {
             className="w-full rounded-xl px-3.5 py-2.5 text-sm outline-none resize-none"
             style={{ background: "var(--input-background)", border: "1px solid rgba(232,121,160,0.2)", color: "#3B1355" }}
           />
+          <label className="flex items-center gap-2 text-xs font-bold" style={{ color: "#6B3580" }}>
+            <input type="checkbox" checked={bannerEnabled} onChange={(e) => setBannerEnabled(e.target.checked)} />
+            배너로 알리기 (전 계정 대시보드 상단에 노출돼요)
+          </label>
           <div className="flex justify-end gap-2">
             <button onClick={() => setComposing(false)} className="text-xs font-bold px-3 py-2 rounded-full" style={{ color: "#A06080" }}>
               취소
@@ -102,8 +110,26 @@ export function NoticesFeature({ canManage = false }: { canManage?: boolean }) {
                     <Pin className="w-3.5 h-3.5" style={{ color: notice.pinned ? "#E879A0" : "#D1D5DB" }} />
                   </button>
                   <button
-                    onClick={() => deleteNotice(notice.id)}
+                    onClick={() => toggleNoticeBanner(notice.id)}
+                    title={notice.bannerEnabled ? "배너 해제" : "배너로 알리기"}
+                    className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors hover:bg-black/[0.04]"
+                  >
+                    {notice.bannerEnabled ? (
+                      <Bell className="w-3.5 h-3.5" style={{ color: "#E879A0" }} />
+                    ) : (
+                      <BellOff className="w-3.5 h-3.5" style={{ color: "#D1D5DB" }} />
+                    )}
+                  </button>
+                  <button
+                    onClick={() =>
+                      ask({
+                        title: `'${notice.title}' 공지를 삭제할까요?`,
+                        description: "학부모와 선생님 화면에서도 함께 사라져요. 되돌릴 수 없어요.",
+                        onConfirm: () => deleteNotice(notice.id),
+                      })
+                    }
                     title="삭제"
+                    aria-label={`${notice.title} 공지 삭제`}
                     className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors hover:bg-black/[0.04]"
                   >
                     <Trash2 className="w-3.5 h-3.5" style={{ color: "#F87171" }} />
@@ -115,6 +141,7 @@ export function NoticesFeature({ canManage = false }: { canManage?: boolean }) {
           </div>
         ))}
       </div>
+      {dialog}
     </div>
   );
 }

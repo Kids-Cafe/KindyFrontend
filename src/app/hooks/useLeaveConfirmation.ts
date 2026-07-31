@@ -10,8 +10,13 @@ const DEFAULT_MESSAGE = "정말로 이 페이지를 벗어나시겠습니까? �
  * 머무르게 합니다. 확인을 누르면 `onLeave`를 호출해 화면을 정리합니다.
  */
 export function useLeaveConfirmation(active: boolean, onLeave?: () => void, message: string = DEFAULT_MESSAGE) {
+  // 리스너를 다시 붙이지 않고도 최신 콜백을 부르기 위한 ref입니다.
+  // 렌더 중에 쓰면 안 되므로(동시성 렌더에서 커밋되지 않은 값이 남을 수 있습니다)
+  // 커밋 이후에 갱신합니다. 읽는 쪽이 이벤트 핸들러뿐이라 이 타이밍이면 충분합니다.
   const onLeaveRef = useRef(onLeave);
-  onLeaveRef.current = onLeave;
+  useEffect(() => {
+    onLeaveRef.current = onLeave;
+  }, [onLeave]);
 
   useEffect(() => {
     if (!active) return;

@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { School, Plus, Pencil, Trash2, Check, X } from "lucide-react";
 import { useDashboardStore } from "@/app/dashboard/DashboardStoreContext";
+import { useConfirm } from "@/app/components/ConfirmDialog";
 
 /** 원장 전용: 반 생성/이름변경/삭제 화면입니다. */
 export function ClassManageFeature() {
   const { data, addClass, renameClass, deleteClass } = useDashboardStore();
+  const { ask, dialog } = useConfirm();
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -90,13 +92,27 @@ export function ClassManageFeature() {
                   <Pencil className="w-3.5 h-3.5" style={{ color: "#A06080" }} />
                 </button>
               )}
-              <button onClick={() => deleteClass(c.id)} className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors hover:bg-black/[0.04]">
+              <button
+                onClick={() =>
+                  ask({
+                    title: `'${c.name}' 반을 삭제할까요?`,
+                    description:
+                      countChildren(c.id) > 0
+                        ? `이 반에 배정된 학생 ${countChildren(c.id)}명의 반 정보도 함께 사라져요. 되돌릴 수 없어요.`
+                        : "되돌릴 수 없어요.",
+                    onConfirm: () => deleteClass(c.id),
+                  })
+                }
+                aria-label={`${c.name} 반 삭제`}
+                className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors hover:bg-black/[0.04]"
+              >
                 <Trash2 className="w-3.5 h-3.5" style={{ color: "#F87171" }} />
               </button>
             </div>
           </div>
         ))}
       </div>
+      {dialog}
     </div>
   );
 }

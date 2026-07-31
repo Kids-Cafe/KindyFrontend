@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ChevronRight, PanelRightClose, PanelRightOpen } from "lucide-react";
 import { useAuth } from "@/app/auth/AuthContext";
 import { MyPage } from "@/app/sections/MyPage";
@@ -7,6 +7,8 @@ import { ServerRail } from "@/app/dashboard/ServerRail";
 import { FeatureSidebar } from "@/app/dashboard/FeatureSidebar";
 import { MemberSidebar } from "@/app/dashboard/MemberSidebar";
 import { StudentInfoDialog } from "@/app/dashboard/StudentInfoDialog";
+import { DirectorStudentPanel } from "@/app/dashboard/DirectorStudentPanel";
+import { MemberProfilePanel } from "@/app/dashboard/MemberProfilePanel";
 import { FEATURES_BY_ROLE, getDefaultFeature } from "@/app/dashboard/featureDefs";
 import type { FeatureId } from "@/app/dashboard/types";
 import { PartnerSelect } from "@/app/dashboard/features/PartnerSelect";
@@ -18,6 +20,7 @@ import { DashboardHomeFeature } from "@/app/dashboard/features/DashboardHomeFeat
 import { ParentChatFeature } from "@/app/dashboard/features/ParentChatFeature";
 import { TeacherChatFeature } from "@/app/dashboard/features/TeacherChatFeature";
 import { NoticeManageFeature } from "@/app/dashboard/features/NoticeManageFeature";
+import { NoticeBanner } from "@/app/dashboard/features/NoticeBanner";
 import { ClassManageFeature } from "@/app/dashboard/features/ClassManageFeature";
 import { MemberManageFeature } from "@/app/dashboard/features/MemberManageFeature";
 import { SuppliesFeature } from "@/app/dashboard/features/SuppliesFeature";
@@ -28,7 +31,7 @@ import { RecommendationsFeature } from "@/app/dashboard/features/Recommendations
 
 function DashboardBody() {
   const { user } = useAuth();
-  const { data } = useDashboardStore();
+  const { data, workspaces, activeWorkspaceId, switchWorkspace } = useDashboardStore();
   const features = FEATURES_BY_ROLE[data.role];
 
   const [activeFeature, setActiveFeature] = useState<FeatureId>(() =>
@@ -38,7 +41,18 @@ function DashboardBody() {
   const [memberOpen, setMemberOpen] = useState(true);
   const [showMyPage, setShowMyPage] = useState(false);
   const [openStudentId, setOpenStudentId] = useState<string | null>(null);
+  const [openTeacherId, setOpenTeacherId] = useState<string | null>(null);
   const [chatTargetChildId, setChatTargetChildId] = useState<string | null>(null);
+
+  // 좌측 서버 레일에서 다른 유치원 워크스페이스로 옮겨가면, 그 유치원 역할에 맞는
+  // 기본 화면으로 돌아가고 이전 워크스페이스에서 열려 있던 패널들은 닫아 둡니다.
+  useEffect(() => {
+    setActiveFeature(getDefaultFeature(data.role, Boolean(data.me?.aiPartner)));
+    setOpenStudentId(null);
+    setOpenTeacherId(null);
+    setChatTargetChildId(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeWorkspaceId]);
 
   const contextLabel = useMemo(() => {
     if (data.role === "child") return data.me?.aiPartner ? `${data.me.nickname}의 공간` : "환영해요!";
@@ -62,7 +76,9 @@ function DashboardBody() {
   return (
     <div className="fixed inset-0 z-[100] flex bg-background text-foreground">
       <ServerRail
-        kindergarten={data.kindergarten}
+        workspaces={workspaces}
+        activeWorkspaceId={activeWorkspaceId}
+        onSwitchWorkspace={switchWorkspace}
         onGoMain={() => setActiveFeature(getDefaultFeature(data.role, Boolean(data.me?.aiPartner)))}
       />
       <div
@@ -129,6 +145,7 @@ function DashboardBody() {
         </div>
 
         <div className="flex-1 min-h-0 overflow-y-auto p-6">
+          <NoticeBanner />
           {data.role !== "child" && <UpcomingScheduleBanner />}
           {data.role === "child" && data.me && (
             <ChildScheduleAnnouncer childId={data.me.id} userId={user?.id ?? data.me.id} partner={data.me.aiPartner} />
@@ -203,11 +220,16 @@ function DashboardBody() {
         style={{ width: memberOpen ? 256 : 0 }}
       >
         <div className="w-64 h-full">
-          <MemberSidebar data={data} onOpenStudent={setOpenStudentId} onSelectFeature={handleSelectFeature} />
+          <MemberSidebar data={data} onOpenStudent={setOpenStudentId} onSelectFeature={handleSelectFeature} onOpenTeacher={setOpenTeacherId} />
         </div>
       </div>
 
-      <StudentInfoDialog childId={openStudentId} onClose={() => setOpenStudentId(null)} onStartChat={openStudentChat} />
+      {data.role === "director" ? (
+        <DirectorStudentPanel childId={openStudentId} onClose={() => setOpenStudentId(null)} />
+      ) : (
+        <StudentInfoDialog childId={openStudentId} onClose={() => setOpenStudentId(null)} onStartChat={openStudentChat} />
+      )}
+      <MemberProfilePanel teacherId={openTeacherId} onClose={() => setOpenTeacherId(null)} />
       {showMyPage && <MyPage onClose={() => setShowMyPage(false)} />}
     </div>
   );

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { CSSProperties, FocusEvent, ReactNode } from "react";
 import { ChevronLeft, X, Check } from "lucide-react";
-import mushroomBg from "@/imports/image_22d709cf.png";
+import mushroomBg from "@/imports/image_22d709cf.jpg";
 import { MiniStar, KioSVG, KinaSVG } from "@/app/components/decorative";
 import { useAuth } from "@/app/auth/AuthContext";
 import {
@@ -13,6 +13,7 @@ import {
   isMockVerificationCodeValid,
 } from "@/app/auth/validation";
 import { isEmailTaken, isLoginIdTaken, registerMockUser } from "@/app/auth/mockSignup";
+import { SESSION_TTL_MS } from "@/app/auth/storage";
 import { openAddressSearch } from "@/app/auth/addressSearch";
 import type { StudentGender } from "@/app/auth/types";
 import { useLeaveConfirmation } from "@/app/hooks/useLeaveConfirmation";
@@ -118,6 +119,8 @@ export function SignupScreen({
   const [childForm, setChildForm] = useState<ChildFormState>(EMPTY_CHILD_FORM);
   const [childErrors, setChildErrors] = useState<ChildFieldErrors>({});
   const [childLoginIdStatus, setChildLoginIdStatus] = useState<DuplicateCheckStatus>("idle");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const { setSession } = useAuth();
 
@@ -228,8 +231,8 @@ export function SignupScreen({
     }
   }
 
-  function completeSignup() {
-    const user = registerMockUser({
+  async function completeSignup() {
+    const user = await registerMockUser({
       name: form.name.trim(),
       loginId: form.loginId.trim(),
       email: form.email.trim(),
@@ -240,12 +243,12 @@ export function SignupScreen({
       addressDetail: form.addressDetail.trim(),
       accountType: "adult",
     });
-    setSession({ user, accessToken: crypto.randomUUID(), expiresAt: Date.now() + 1000 * 60 * 60 * 24 * 7 });
+    setSession({ user, accessToken: crypto.randomUUID(), expiresAt: Date.now() + SESSION_TTL_MS });
     onSignedUp();
   }
 
-  function completeChildSignup() {
-    const user = registerMockUser({
+  async function completeChildSignup() {
+    const user = await registerMockUser({
       name: childForm.name.trim(),
       loginId: childForm.loginId.trim(),
       email: childForm.loginId.trim(),
@@ -257,22 +260,40 @@ export function SignupScreen({
       guardianName: guardianName.trim(),
       guardianPhone: guardianPhone.trim(),
     });
-    setSession({ user, accessToken: crypto.randomUUID(), expiresAt: Date.now() + 1000 * 60 * 60 * 24 * 7 });
+    setSession({ user, accessToken: crypto.randomUUID(), expiresAt: Date.now() + SESSION_TTL_MS });
     onSignedUp();
+  }
+
+  /**
+   * 가입 처리는 비밀번호 해싱 때문에 비동기입니다. 그동안 버튼을 잠가
+   * 같은 계정이 두 번 만들어지지 않게 합니다.
+   */
+  async function runSubmit(complete: () => Promise<void>) {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    setSubmitError(null);
+    try {
+      await complete();
+    } catch (cause) {
+      console.error("[Kindy] 회원가입 실패", cause);
+      setSubmitError("가입 처리 중 문제가 생겼어요. 잠시 후 다시 시도해주세요.");
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   function handleSubmit() {
     const nextErrors = validate();
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
-    completeSignup();
+    void runSubmit(completeSignup);
   }
 
   function handleChildSubmit() {
     const nextErrors = validateChild();
     setChildErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
-    completeChildSignup();
+    void runSubmit(completeChildSignup);
   }
 
   function handleSendVerificationCode() {
@@ -603,14 +624,17 @@ export function SignupScreen({
               <ErrorText message={childErrors.gender} />
             </div>
 
+            <SubmitError message={submitError} />
             <button type="submit"
-              className="w-full rounded-2xl font-bold text-white text-base transition-all hover:opacity-90 active:scale-[0.98] mb-5 mt-2"
+              disabled={isSubmitting}
+              aria-busy={isSubmitting}
+              className="w-full rounded-2xl font-bold text-white text-base transition-all hover:opacity-90 active:scale-[0.98] mb-5 mt-2 disabled:opacity-60 disabled:active:scale-100"
               style={{
                 height: 52,
                 background: "linear-gradient(135deg, #E879A0 0%, #F472B6 50%, #C084FC 100%)",
                 boxShadow: "0 4px 20px rgba(232,121,160,0.40)",
               }}>
-              가입하기
+              {isSubmitting ? "가입 중…" : "가입하기"}
             </button>
             </form>
 
@@ -755,14 +779,17 @@ export function SignupScreen({
             <ErrorText message={errors.addressDetail} />
           </div>
 
+          <SubmitError message={submitError} />
           <button type="submit"
-            className="w-full rounded-2xl font-bold text-white text-base transition-all hover:opacity-90 active:scale-[0.98] mb-5 mt-2"
+            disabled={isSubmitting}
+            aria-busy={isSubmitting}
+            className="w-full rounded-2xl font-bold text-white text-base transition-all hover:opacity-90 active:scale-[0.98] mb-5 mt-2 disabled:opacity-60 disabled:active:scale-100"
             style={{
               height: 52,
               background: "linear-gradient(135deg, #E879A0 0%, #F472B6 50%, #C084FC 100%)",
               boxShadow: "0 4px 20px rgba(232,121,160,0.40)",
             }}>
-            가입하기
+            {isSubmitting ? "가입 중…" : "가입하기"}
           </button>
           </form>
 
@@ -788,6 +815,20 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 function ErrorText({ message }: { message?: string }) {
   if (!message) return null;
   return <p className="text-xs font-semibold -mt-2" style={{ color: "#DC2626" }}>{message}</p>;
+}
+
+/** 개별 필드가 아니라 제출 자체가 실패했을 때 쓰는 배너입니다. */
+function SubmitError({ message }: { message: string | null }) {
+  if (!message) return null;
+  return (
+    <div
+      role="alert"
+      className="mb-3 mt-2 rounded-2xl px-4 py-3 text-xs font-semibold"
+      style={{ background: "#FEF2F2", color: "#DC2626", border: "1px solid #FECACA" }}
+    >
+      {message}
+    </div>
+  );
 }
 
 type DatePanel = "year" | "month" | "day" | null;

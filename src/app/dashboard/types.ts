@@ -75,6 +75,8 @@ export interface ParentRecord {
 export interface TeacherRecord {
   id: string;
   name: string;
+  /** 원장이 멤버 프로필 패널에서 지어줄 수 있는 별칭입니다. 없으면 실명(name)이 그대로 표시됩니다. */
+  nickname?: string;
   classId: string;
   className: string;
   kindergartenId: string;
@@ -145,7 +147,7 @@ export interface ChildReports {
 
 export type ReportCategory = keyof ChildReports;
 
-export type ChatSender = "child" | "parent" | "teacher" | "ai";
+export type ChatSender = "child" | "parent" | "teacher" | "ai" | "director";
 
 export type DataCardType = ReportCategory;
 
@@ -178,6 +180,15 @@ export interface AiChatThread {
   messages: ChatMessage[];
 }
 
+/** 원장 ↔ 교사 1:1 대화입니다(멤버 프로필 패널의 "메시지 보내기"). 교사 1명당 1개입니다. */
+export interface MemberChatThread {
+  id: string;
+  teacherId: string;
+  teacherName: string;
+  directorName: string;
+  messages: ChatMessage[];
+}
+
 /** 유치원 공지사항입니다. 원장만 작성/수정/고정/삭제할 수 있고, 나머지 역할은 읽기 전용입니다. */
 export interface NoticeRecord {
   id: string;
@@ -188,6 +199,8 @@ export interface NoticeRecord {
   /** epoch ms */
   createdAt: number;
   pinned: boolean;
+  /** 켜져 있으면 전 계정 대시보드 상단 배너로 노출됩니다. */
+  bannerEnabled: boolean;
 }
 
 export interface SupplyComment {
@@ -240,6 +253,16 @@ export interface PhotoRecord {
   takenAt: number;
 }
 
+/** 선생님이 남긴 글에 부모(또는 선생님 본인)가 다는 답글입니다. */
+export interface ParentNoteComment {
+  id: string;
+  authorName: string;
+  authorRole: DashboardRole;
+  text: string;
+  /** epoch ms */
+  createdAt: number;
+}
+
 /** 선생님이 특정 아이에 대해 남기는, 그 아이의 부모만 볼 수 있는 게시글/의견입니다. */
 export interface ParentNote {
   id: string;
@@ -248,6 +271,7 @@ export interface ParentNote {
   text: string;
   /** epoch ms */
   createdAt: number;
+  comments: ParentNoteComment[];
 }
 
 export type FeatureId =
@@ -291,6 +315,8 @@ export interface DashboardData {
   reportsByChild: Record<string, ChildReports>;
   threadsByChild: Record<string, ChatThread>;
   aiThreadsByChild: Record<string, AiChatThread>;
+  /** 원장 ↔ 교사 대화 스레드입니다. 교사 id로 조회합니다. */
+  memberThreadsByTeacher: Record<string, MemberChatThread>;
 
   /** 유치원 내 반 목록입니다(원장이 관리). */
   classes: ClassRecord[];

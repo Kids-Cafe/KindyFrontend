@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import type { ReactNode } from "react";
 import { beginSocialLogin } from "@/app/auth/oauth";
 import { loginMockUser, updateMockUser } from "@/app/auth/mockSignup";
-import { clearSession, loadSession, saveSession } from "@/app/auth/storage";
+import { SESSION_TTL_MS, clearSession, loadSession, saveSession } from "@/app/auth/storage";
 import type { AuthSession, AuthUser, SocialProviderId } from "@/app/auth/types";
 
 interface AuthContextValue {
@@ -18,7 +18,9 @@ interface AuthContextValue {
   /** 인가 페이지로 이동시킵니다. */
   loginWith: (provider: SocialProviderId) => Promise<void>;
   /** 아이디/비밀번호로 mock 로그인을 시도합니다. 성공하면 true를 돌려주고 세션을 반영합니다. */
-  loginWithPassword: (loginId: string, password: string) => boolean;
+  loginWithPassword: (loginId: string, password: string) => Promise<boolean>;
+  /** 비밀번호 대조가 진행 중인지. 로그인 버튼 잠금/스피너에 씁니다. */
+  isSubmittingPassword: boolean;
   /** 콜백 처리 결과로 받은 세션을 확정합니다. */
   setSession: (session: AuthSession) => void;
   /** 로그인된 사용자 정보 일부를 병합해 저장합니다. 온보딩 단계에서 씁니다. */
@@ -39,6 +41,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [pendingProvider, setPendingProvider] = useState<SocialProviderId | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isSubmittingPassword, setIsSubmittingPassword] = useState(false);
 
   // 최초 마운트 시 저장된 세션을 복원합니다.
   useEffect(() => {
@@ -76,15 +79,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const loginWithPassword = useCallback((loginId: string, password: string): boolean => {
-    const result = loginMockUser(loginId, password);
-    if (!result.ok) {
-      // 아이디 존재 여부가 드러나지 않도록 원인과 무관하게 같은 문구를 보여줍니다.
-      setError("아이디 또는 비밀번호가 올바르지 않아요.");
+  const loginWithPassword = useCallback(async (loginId: string, password: string): Promise<boolean> => {
+    setError(null);
+    setIsSubmittingPassword(true);
+    try {
+      const result = await loginMockUser(loginId, password);
+      if (!result.ok) {
+        setError(
+          result.reason === "crypto-unavailable"
+            ? "보안 연결(HTTPS)에서만 로그인할 수 있어요. 주소를 확인해주세요."
+            : // 아이디 존재 여부가 드러나지 않도록 나머지는 같은 문구를 보여줍니다.
+              "아이디 또는 비밀번호가 올바르지 않아요.",
+        );
+        return false;
+      }
+      setSession({ user: result.user, accessToken: crypto.randomUUID(), expiresAt: Date.now() + SESSION_TTL_MS });
+      return true;
+    } catch (cause) {
+      console.error("[Kindy] 로그인 처리 실패", cause);
+      setError("로그인 중 문제가 생겼어요. 잠시 후 다시 시도해주세요.");
       return false;
+    } finally {
+      setIsSubmittingPassword(false);
     }
-    setSession({ user: result.user, accessToken: crypto.randomUUID(), expiresAt: Date.now() + 1000 * 60 * 60 * 24 * 7 });
-    return true;
   }, [setSession]);
 
   const updateProfile = useCallback((partial: Partial<AuthUser>) => {
@@ -107,6 +124,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setError(null);
   }, []);
 
+  // 세션 만료는 `loadSession()`이 앱을 열 때만 검사합니다. 탭을 며칠씩 켜 두는
+  // 사용자를 위해 만료 시각에 맞춰 한 번 더 정리해 줍니다.
+  useEffect(() => {
+    if (!session) return;
+
+    const remaining = session.expiresAt - Date.now();
+    if (remaining <= 0) {
+      logout();
+      return;
+    }
+    // setTimeout의 지연은 32비트 정수를 넘기면 즉시 실행되므로 상한을 둡니다.
+    const delay = Math.min(remaining, 2 ** 31 - 1);
+    const timer = window.setTimeout(logout, delay);
+    return () => window.clearTimeout(timer);
+  }, [session, logout]);
+
   const value = useMemo<AuthContextValue>(
     () => ({
       user: session?.user ?? null,
@@ -116,12 +149,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       error,
       loginWith,
       loginWithPassword,
+      isSubmittingPassword,
       setSession,
       updateProfile,
       setError,
       logout,
     }),
-    [session, isLoading, pendingProvider, error, loginWith, loginWithPassword, setSession, updateProfile, logout],
+    [session, isLoading, pendingProvider, error, loginWith, loginWithPassword, isSubmittingPassword, setSession, updateProfile, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

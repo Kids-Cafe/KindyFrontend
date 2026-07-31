@@ -45,3 +45,6 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.temp
+
+# Claude Code 작업 디렉터리(워크트리 사본·세션 데이터)
+.claude/

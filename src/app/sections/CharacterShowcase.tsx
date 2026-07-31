@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { X } from "lucide-react";
-import crystalBg from "@/imports/image_5b6ed8e7.png";
-import mushroomBg from "@/imports/image_22d709cf.png";
+import crystalBg from "@/imports/image_5b6ed8e7.jpg";
+import mushroomBg from "@/imports/image_22d709cf.jpg";
 import { MiniStar, KioSVG, KinaSVG } from "@/app/components/decorative";
 import { CHAR_DATA, FOREST_PARTICLES } from "@/app/data/characterData";
 

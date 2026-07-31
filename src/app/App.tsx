@@ -1,25 +1,52 @@
-import { useEffect, useState } from "react";
+import { Suspense, lazy, useEffect, useState } from "react";
 import { SplashIntro } from "@/app/sections/SplashIntro";
 import { Navbar } from "@/app/sections/Navbar";
 import { HeroSection } from "@/app/sections/HeroSection";
 import { FeaturesSection } from "@/app/sections/FeaturesSection";
 import { HowItWorks } from "@/app/sections/HowItWorks";
-import { AnalyticsDashboard } from "@/app/sections/AnalyticsDashboard";
 import { PersonasSection } from "@/app/sections/PersonasSection";
 import { TestimonialsSection } from "@/app/sections/TestimonialsSection";
 import { CTASection } from "@/app/sections/CTASection";
 import { Footer } from "@/app/sections/Footer";
-import { CharacterShowcase } from "@/app/sections/CharacterShowcase";
-import { LoginScreen } from "@/app/sections/LoginScreen";
-import { SignupScreen } from "@/app/sections/SignupScreen";
-import { OnboardingWizard } from "@/app/sections/onboarding/OnboardingWizard";
-import { MyPage } from "@/app/sections/MyPage";
-import { OAuthCallback } from "@/app/sections/OAuthCallback";
 import { isOnCallbackRoute } from "@/app/auth/oauth";
 import { useAuth } from "@/app/auth/AuthContext";
-import { DashboardShell } from "@/app/dashboard/DashboardShell";
+import { ErrorBoundary } from "@/app/components/ErrorBoundary";
+
+// 첫 화면(랜딩 상단)에 필요 없는 것들은 따로 떼어 냅니다. 특히 대시보드와
+// 로그인/가입 화면은 각각 무거운 의존성(차트, 대형 배경 이미지)을 끌고 오기 때문에
+// 방문자가 실제로 그 화면에 들어갈 때 받도록 하는 편이 초기 로딩에 훨씬 유리합니다.
+const AnalyticsDashboard = lazy(() =>
+  import("@/app/sections/AnalyticsDashboard").then((m) => ({ default: m.AnalyticsDashboard })),
+);
+const CharacterShowcase = lazy(() =>
+  import("@/app/sections/CharacterShowcase").then((m) => ({ default: m.CharacterShowcase })),
+);
+const LoginScreen = lazy(() => import("@/app/sections/LoginScreen").then((m) => ({ default: m.LoginScreen })));
+const SignupScreen = lazy(() => import("@/app/sections/SignupScreen").then((m) => ({ default: m.SignupScreen })));
+const OnboardingWizard = lazy(() =>
+  import("@/app/sections/onboarding/OnboardingWizard").then((m) => ({ default: m.OnboardingWizard })),
+);
+const MyPage = lazy(() => import("@/app/sections/MyPage").then((m) => ({ default: m.MyPage })));
+const OAuthCallback = lazy(() => import("@/app/sections/OAuthCallback").then((m) => ({ default: m.OAuthCallback })));
+const DashboardShell = lazy(() =>
+  import("@/app/dashboard/DashboardShell").then((m) => ({ default: m.DashboardShell })),
+);
 
 type AuthFlow = "login" | "signup" | "onboarding" | null;
+
+/** 화면 전체를 덮는 청크를 기다리는 동안 보여줄 최소한의 표시입니다. */
+function FullScreenLoader() {
+  return (
+    <div
+      className="fixed inset-0 z-[9000] flex items-center justify-center"
+      style={{ background: "#FFF7FA" }}
+      role="status"
+      aria-live="polite"
+    >
+      <span className="text-sm font-bold" style={{ color: "#A06080" }}>불러오는 중…</span>
+    </div>
+  );
+}
 
 /**
  * Kindy 마케팅 랜딩 페이지입니다. 이 컴포넌트는 페이지 수준 상태
@@ -57,31 +84,48 @@ export default function App() {
   }, [isAuthenticated, authFlow, user?.onboardingCompleted]);
 
   // ── OAuth 콜백 경로: 랜딩을 렌더하지 않고 처리 화면만 보여줍니다. ──
-  if (isOnCallbackRoute()) return <OAuthCallback />;
+  if (isOnCallbackRoute()) {
+    return (
+      <Suspense fallback={<FullScreenLoader />}>
+        <OAuthCallback />
+      </Suspense>
+    );
+  }
 
   // ── 로그인 + 온보딩 완료: 랜딩 대신 기능 대시보드를 보여줍니다. ──
   // 대시보드 안에서는 좌측 상단 "kindy" 로고를 눌러도 대시보드 메인페이지로 돌아올 뿐,
   // 마케팅 랜딩으로는 나가지 않습니다(로그아웃해야 랜딩을 다시 보게 됩니다).
+  // 대시보드가 통째로 터져도 로그아웃은 할 수 있어야 하므로 별도 경계로 감쌉니다.
   if (isAuthenticated && user?.onboardingCompleted) {
-    return <DashboardShell />;
+    return (
+      <ErrorBoundary label="dashboard">
+        <Suspense fallback={<FullScreenLoader />}>
+          <DashboardShell />
+        </Suspense>
+      </ErrorBoundary>
+    );
   }
 
   return (
     <div className="min-h-screen bg-background text-foreground">
       <SplashIntro onDone={() => setSplashDone(true)} />
-      {showCharacters && <CharacterShowcase onClose={() => setShowCharacters(false)} />}
-      {authFlow === "login" && (
-        <LoginScreen onClose={() => setAuthFlow(null)} onSwitchToSignup={() => setAuthFlow("signup")} />
-      )}
-      {authFlow === "signup" && (
-        <SignupScreen
-          onClose={() => setAuthFlow(null)}
-          onSwitchToLogin={() => setAuthFlow("login")}
-          onSignedUp={() => setAuthFlow("onboarding")}
-        />
-      )}
-      {authFlow === "onboarding" && <OnboardingWizard onComplete={() => setAuthFlow(null)} />}
-      {showMyPage && <MyPage onClose={() => setShowMyPage(false)} />}
+
+      {/* 전체 화면 모달들. 각자 별도 청크라 열릴 때 받아옵니다. */}
+      <Suspense fallback={<FullScreenLoader />}>
+        {showCharacters && <CharacterShowcase onClose={() => setShowCharacters(false)} />}
+        {authFlow === "login" && (
+          <LoginScreen onClose={() => setAuthFlow(null)} onSwitchToSignup={() => setAuthFlow("signup")} />
+        )}
+        {authFlow === "signup" && (
+          <SignupScreen
+            onClose={() => setAuthFlow(null)}
+            onSwitchToLogin={() => setAuthFlow("login")}
+            onSignedUp={() => setAuthFlow("onboarding")}
+          />
+        )}
+        {authFlow === "onboarding" && <OnboardingWizard onComplete={() => setAuthFlow(null)} />}
+        {showMyPage && <MyPage onClose={() => setShowMyPage(false)} />}
+      </Suspense>
 
       <div style={{ opacity: splashDone ? 1 : 0, transition: "opacity 0.5s ease-in" }}>
         <Navbar
@@ -94,7 +138,10 @@ export default function App() {
         <HeroSection onOpenSignup={() => setAuthFlow("signup")} />
         <FeaturesSection />
         <HowItWorks />
-        <AnalyticsDashboard />
+        {/* 차트 라이브러리를 끌고 오는 섹션이라 스크롤이 닿을 때 받아옵니다. */}
+        <Suspense fallback={<div style={{ minHeight: 480 }} aria-hidden="true" />}>
+          <AnalyticsDashboard />
+        </Suspense>
         <PersonasSection />
         <TestimonialsSection />
         <CTASection />

@@ -13,6 +13,7 @@ export function buildNotices(kindergartenId: string, directorName: string): Noti
       authorName: directorName,
       createdAt: NOW - 1000 * 60 * 60 * 24 * 2,
       pinned: true,
+      bannerEnabled: true,
     },
     {
       id: "notice-2",
@@ -22,6 +23,7 @@ export function buildNotices(kindergartenId: string, directorName: string): Noti
       authorName: directorName,
       createdAt: NOW - 1000 * 60 * 60 * 24,
       pinned: false,
+      bannerEnabled: false,
     },
   ];
 }

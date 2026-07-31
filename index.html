@@ -1,22 +1,49 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-  <!DOCTYPE html>
-  <html lang="en">
-    <head>
-      
-      <meta charset="UTF-8" />
-      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-      <title>Kindy 플랫폼 구축</title>
-      <meta name="description" content="This interactive platform allows preschoolers to share their daily experiences through a chatbot, creating a diary accessible to parents and teachers for improved communication and insights." />
-      <meta name="robots" content="noindex, nofollow" />
-      <style>html, body { height: 100%; margin: 0; } #root { height: 100%; }</style>
-      
-    </head>
+    <title>Kindy · 우리 아이의 하루를 이어주는 유치원 소통 플랫폼</title>
+    <meta
+      name="description"
+      content="아이가 챗봇과 나눈 이야기가 그림일기가 되고, 학부모와 선생님이 함께 아이의 하루를 확인합니다. 알림장·일정·사진첩·상담까지 한 곳에서."
+    />
+    <meta name="theme-color" content="#E879A0" />
 
-    <body>
-      
-      <div id="root"></div>
-      <script type="module" src="/src/main.tsx"></script>
-      
-    </body>
-  </html>
-  
+    <!-- 검색 노출 차단. 인증이 실제 백엔드에 연결되고 정식 오픈할 때 이 줄을 지우세요. -->
+    <meta name="robots" content="noindex, nofollow" />
+
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/favicon.svg" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Kindy" />
+    <meta property="og:title" content="Kindy · 우리 아이의 하루를 이어주는 유치원 소통 플랫폼" />
+    <meta
+      property="og:description"
+      content="아이가 챗봇과 나눈 이야기가 그림일기가 되고, 학부모와 선생님이 함께 아이의 하루를 확인합니다."
+    />
+    <meta property="og:locale" content="ko_KR" />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+      #root {
+        height: 100%;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div id="root"></div>
+    <noscript>
+      Kindy를 이용하려면 브라우저에서 자바스크립트를 켜주세요.
+    </noscript>
+    <script type="module" src="./src/main.tsx"></script>
+  </body>
+</html>

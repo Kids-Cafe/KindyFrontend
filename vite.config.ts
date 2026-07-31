@@ -33,4 +33,21 @@ export default defineConfig({
 
   // 원시 import를 지원할 파일 형식입니다. 여기에 .css, .tsx, .ts 파일은 절대 추가하지 마세요.
   assetsInclude: ['**/*.svg', '**/*.csv'],
+
+  build: {
+    rollupOptions: {
+      output: {
+        // 자주 안 바뀌는 라이브러리를 앱 코드와 분리해 두면, 앱을 배포해도
+        // 방문자 브라우저에 캐시된 vendor 청크를 그대로 재사용할 수 있습니다.
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return
+          if (id.includes('recharts') || id.includes('d3-')) return 'vendor-charts'
+          if (id.includes('@radix-ui')) return 'vendor-radix'
+          if (id.includes('motion') || id.includes('framer-motion')) return 'vendor-motion'
+          if (id.includes('react-dom') || id.includes('/react/') || id.includes('scheduler')) return 'vendor-react'
+          return 'vendor'
+        },
+      },
+    },
+  },
 })

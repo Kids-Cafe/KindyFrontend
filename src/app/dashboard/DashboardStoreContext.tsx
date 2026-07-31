@@ -1,15 +1,42 @@
 import { createContext, useCallback, useContext, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useAuth } from "@/app/auth/AuthContext";
-import { buildDashboardData } from "@/app/dashboard/mockData";
+import { isAllRolesDemoUser } from "@/app/auth/mockSignup";
+import { buildAltDashboardData, buildDashboardData } from "@/app/dashboard/mockData";
+import { revokeAcceptedInvite, updateAcceptedInviteRoles } from "@/app/dashboard/mock/membershipInvites";
 import type {
   AIPartnerId,
   ChatSender,
   DashboardData,
   DataCardType,
   FeatureId,
+  KindergartenRecord,
   PermissionKey,
 } from "@/app/dashboard/types";
+
+/** 지금 로그인된 사람이 오갈 수 있는 "서버"(유치원) 단위 워크스페이스입니다. */
+export interface DashboardWorkspace {
+  id: string;
+  kindergarten: KindergartenRecord;
+  /** 이 워크스페이스에서 이 사람이 어떤 역할로 보이는지 (원장 자신의 유치원 vs 타 유치원의 학부모 등). */
+  role: DashboardData["role"];
+  /** 서버 레일 아이콘에 쓸 이모지입니다. 없으면 유치원 이름 첫 글자를 씁니다. */
+  icon?: string;
+  /** 툴팁에 유치원 이름과 함께 붙일 설명입니다(예: "원장으로 보기"). */
+  label?: string;
+}
+
+/**
+ * 통합 데모 계정(`demo`) 전용 워크스페이스 정의입니다. 같은 유치원을 네 가지 역할로
+ * 나란히 띄워, 화면 검수 때 계정을 갈아타지 않고 비교할 수 있게 합니다.
+ * 워크스페이스마다 데이터가 독립적이므로 한쪽에서 쓴 글이 다른 쪽에 보이지는 않습니다.
+ */
+const DEMO_ROLE_WORKSPACES: { id: string; role: DashboardData["role"]; icon: string; label: string }[] = [
+  { id: "demo-director", role: "director", icon: "🏫", label: "원장으로 보기" },
+  { id: "demo-teacher", role: "teacher", icon: "🎒", label: "선생님으로 보기" },
+  { id: "demo-parent", role: "parent", icon: "👨‍👩‍👧", label: "학부모로 보기" },
+  { id: "demo-child", role: "child", icon: "🧒", label: "아이로 보기" },
+];
 
 const AI_REPLIES: Record<AIPartnerId, string[]> = {
   kio: [
@@ -38,6 +65,10 @@ function pickReply(partner: AIPartnerId, userText: string): string {
 
 interface DashboardStoreValue {
   data: DashboardData;
+  /** 좌측 서버 레일에서 오갈 수 있는 워크스페이스 목록입니다(원장은 자기 유치원 + 데모용 타 유치원). */
+  workspaces: DashboardWorkspace[];
+  activeWorkspaceId: string;
+  switchWorkspace: (workspaceId: string) => void;
   /** 아이 계정이 파트너를 고를 때 사용합니다. */
   choosePartner: (childId: string, partner: AIPartnerId) => void;
   /** AI 채팅에 메시지를 보내고, 잠시 후 AI 응답을 자동으로 추가합니다. */
@@ -50,8 +81,9 @@ interface DashboardStoreValue {
   aiTyping: Record<string, boolean>;
 
   /** 원장 전용: 공지사항 CRUD. */
-  addNotice: (title: string, body: string, authorName: string) => void;
+  addNotice: (title: string, body: string, authorName: string, bannerEnabled?: boolean) => void;
   togglePinNotice: (noticeId: string) => void;
+  toggleNoticeBanner: (noticeId: string) => void;
   deleteNotice: (noticeId: string) => void;
 
   /** 원장 전용: 반 CRUD. */
@@ -64,6 +96,8 @@ interface DashboardStoreValue {
   updateRolePermissions: (roleId: string, permissions: PermissionKey[]) => void;
   deleteRole: (roleId: string) => void;
   assignTeacherRole: (teacherId: string, roleId: string, assigned: boolean) => void;
+  /** 원장 전용: 초대를 수락한 교사를 유치원 멤버에서 내보냅니다. */
+  removeTeacherMembership: (teacherId: string) => void;
 
   /** 선생님/원장: 준비물 작성. 학부모: 댓글. */
   addSupplyItem: (classId: string, title: string, body: string, authorName: string, dueDate?: string) => void;
@@ -71,6 +105,7 @@ interface DashboardStoreValue {
 
   /** 선생님/원장: 일정 등록. */
   addScheduleEvent: (title: string, date: string, time: string | undefined, createdBy: string, classId?: string) => void;
+  updateScheduleEvent: (eventId: string, title: string, date: string, time: string | undefined, classId?: string) => void;
   deleteScheduleEvent: (eventId: string) => void;
 
   /** 사진첩: 전 계정 공용. */
@@ -79,9 +114,16 @@ interface DashboardStoreValue {
 
   /** 선생님 전용: 특정 아이의 "부모 전용" 게시글 작성. */
   addParentNote: (childId: string, authorName: string, text: string) => void;
+  /** 학부모/원장: 선생님이 남긴 글에 답글을 답니다. */
+  addParentNoteComment: (childId: string, noteId: string, authorName: string, authorRole: DashboardData["role"], text: string) => void;
 
   /** 마이페이지 "아이 정보 변경"에서 씁니다. */
   updateChildNickname: (childId: string, nickname: string) => void;
+
+  /** 원장 전용: 멤버 프로필 패널에서 교사 별칭을 바꿉니다. */
+  updateTeacherNickname: (teacherId: string, nickname: string) => void;
+  /** 멤버 프로필 패널의 원장 ↔ 교사 1:1 대화에 메시지를 보냅니다. */
+  sendMemberMessage: (teacherId: string, senderRole: ChatSender, senderName: string, text: string) => void;
 
   /** 메인페이지(홈)에 기능 위젯을 추가/제거합니다. */
   addHomeWidget: (id: FeatureId) => void;
@@ -92,7 +134,63 @@ const DashboardStoreContext = createContext<DashboardStoreValue | null>(null);
 
 export function DashboardStoreProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
-  const [data, setData] = useState<DashboardData>(() => buildDashboardData(user!));
+
+  const isAllRolesDemo = isAllRolesDemoUser(user!);
+
+  const [dataByWorkspace, setDataByWorkspace] = useState<Record<string, DashboardData>>(() => {
+    // 통합 데모 계정은 같은 유치원을 역할별로 하나씩, 총 네 개의 워크스페이스로 봅니다.
+    if (isAllRolesDemo) {
+      return Object.fromEntries(DEMO_ROLE_WORKSPACES.map((w) => [w.id, buildDashboardData(user!, w.role)]));
+    }
+
+    const home = buildDashboardData(user!);
+    // 원장은 자기 유치원을 운영하는 동시에, 다른 유치원에는 학부모로 등록되어 있을 수 있습니다.
+    // 데모 목적으로 이 두 번째 워크스페이스는 원장 계정에서만 제공합니다.
+    const initial: Record<string, DashboardData> = { home };
+    if (home.role === "director") initial.alt = buildAltDashboardData(user!);
+    return initial;
+  });
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState(() =>
+    isAllRolesDemo ? DEMO_ROLE_WORKSPACES[0].id : "home",
+  );
+
+  const data = dataByWorkspace[activeWorkspaceId];
+
+  // 지금 보고 있는 워크스페이스만 갱신합니다. 렌더 중에 값을 써 넣는 ref 대신
+  // 의존성으로 받아야, 워크스페이스를 바꾼 직후에도 항상 맞는 대상에 반영됩니다.
+  const setData = useCallback(
+    (updater: (prev: DashboardData) => DashboardData) => {
+      setDataByWorkspace((prev) => ({
+        ...prev,
+        [activeWorkspaceId]: updater(prev[activeWorkspaceId]),
+      }));
+    },
+    [activeWorkspaceId],
+  );
+
+  const workspaces = useMemo<DashboardWorkspace[]>(
+    () =>
+      Object.entries(dataByWorkspace).map(([id, d]) => {
+        // 통합 데모 계정은 네 워크스페이스의 유치원이 모두 같으므로,
+        // 이름 첫 글자 대신 역할 아이콘으로 구분해야 알아볼 수 있습니다.
+        const demo = DEMO_ROLE_WORKSPACES.find((w) => w.id === id);
+        return { id, kindergarten: d.kindergarten, role: d.role, icon: demo?.icon, label: demo?.label };
+      }),
+    [dataByWorkspace],
+  );
+
+  const switchWorkspace = useCallback((workspaceId: string) => {
+    setActiveWorkspaceId((prev) => {
+      if (workspaceId === prev) return prev;
+      // 없는 워크스페이스로 옮기면 `data`가 undefined가 되어 대시보드가 통째로 멈춥니다.
+      if (!(workspaceId in dataByWorkspace)) {
+        console.warn(`[Kindy] 알 수 없는 워크스페이스입니다: ${workspaceId}`);
+        return prev;
+      }
+      return workspaceId;
+    });
+  }, [dataByWorkspace]);
+
   const [aiTyping, setAiTyping] = useState<Record<string, boolean>>({});
 
   const choosePartner = useCallback((childId: string, partner: AIPartnerId) => {
@@ -131,7 +229,6 @@ export function DashboardStoreProvider({ children }: { children: ReactNode }) {
 
     setData((prev) => {
       const child = prev.classChildren.find((c) => c.id === childId) ?? prev.me;
-      const partner = child?.aiPartner ?? "kio";
       const thread = prev.aiThreadsByChild[childId] ?? { childId, messages: [] };
       return {
         ...prev,
@@ -210,11 +307,11 @@ export function DashboardStoreProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const addNotice = useCallback((title: string, body: string, authorName: string) => {
+  const addNotice = useCallback((title: string, body: string, authorName: string, bannerEnabled = false) => {
     setData((prev) => ({
       ...prev,
       notices: [
-        { id: crypto.randomUUID(), kindergartenId: prev.kindergarten.id, title, body, authorName, createdAt: Date.now(), pinned: false },
+        { id: crypto.randomUUID(), kindergartenId: prev.kindergarten.id, title, body, authorName, createdAt: Date.now(), pinned: false, bannerEnabled },
         ...prev.notices,
       ],
     }));
@@ -224,6 +321,13 @@ export function DashboardStoreProvider({ children }: { children: ReactNode }) {
     setData((prev) => ({
       ...prev,
       notices: prev.notices.map((n) => (n.id === noticeId ? { ...n, pinned: !n.pinned } : n)),
+    }));
+  }, []);
+
+  const toggleNoticeBanner = useCallback((noticeId: string) => {
+    setData((prev) => ({
+      ...prev,
+      notices: prev.notices.map((n) => (n.id === noticeId ? { ...n, bannerEnabled: !n.bannerEnabled } : n)),
     }));
   }, []);
 
@@ -272,14 +376,25 @@ export function DashboardStoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const assignTeacherRole = useCallback((teacherId: string, roleId: string, assigned: boolean) => {
-    setData((prev) => ({
-      ...prev,
-      teachers: prev.teachers.map((t) =>
+    setData((prev) => {
+      const nextTeachers = prev.teachers.map((t) =>
         t.id !== teacherId
           ? t
           : { ...t, roleIds: assigned ? [...new Set([...t.roleIds, roleId])] : t.roleIds.filter((id) => id !== roleId) },
-      ),
-    }));
+      );
+      // 초대를 수락해 합류한 교사라면, 다음 로그인 때도 배정한 권한이 이어지도록
+      // localStorage의 초대 레코드에도 함께 반영합니다. 초대 출신이 아닌 id면 조용히 무시됩니다.
+      const updated = nextTeachers.find((t) => t.id === teacherId);
+      if (updated) updateAcceptedInviteRoles(prev.kindergarten.id, teacherId, updated.roleIds);
+      return { ...prev, teachers: nextTeachers };
+    });
+  }, []);
+
+  const removeTeacherMembership = useCallback((teacherId: string) => {
+    setData((prev) => {
+      revokeAcceptedInvite(prev.kindergarten.id, teacherId);
+      return { ...prev, teachers: prev.teachers.filter((t) => t.id !== teacherId) };
+    });
   }, []);
 
   const addSupplyItem = useCallback((classId: string, title: string, body: string, authorName: string, dueDate?: string) => {
@@ -319,6 +434,13 @@ export function DashboardStoreProvider({ children }: { children: ReactNode }) {
     }));
   }, []);
 
+  const updateScheduleEvent = useCallback((eventId: string, title: string, date: string, time: string | undefined, classId?: string) => {
+    setData((prev) => ({
+      ...prev,
+      scheduleEvents: prev.scheduleEvents.map((e) => (e.id === eventId ? { ...e, title, date, time, classId } : e)),
+    }));
+  }, []);
+
   const deleteScheduleEvent = useCallback((eventId: string) => {
     setData((prev) => ({ ...prev, scheduleEvents: prev.scheduleEvents.filter((e) => e.id !== eventId) }));
   }, []);
@@ -343,11 +465,33 @@ export function DashboardStoreProvider({ children }: { children: ReactNode }) {
         ...prev,
         parentNotesByChild: {
           ...prev.parentNotesByChild,
-          [childId]: [{ id: crypto.randomUUID(), childId, authorName, text: trimmed, createdAt: Date.now() }, ...list],
+          [childId]: [{ id: crypto.randomUUID(), childId, authorName, text: trimmed, createdAt: Date.now(), comments: [] }, ...list],
         },
       };
     });
   }, []);
+
+  const addParentNoteComment = useCallback(
+    (childId: string, noteId: string, authorName: string, authorRole: DashboardData["role"], text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+      setData((prev) => {
+        const list = prev.parentNotesByChild[childId] ?? [];
+        return {
+          ...prev,
+          parentNotesByChild: {
+            ...prev.parentNotesByChild,
+            [childId]: list.map((note) =>
+              note.id !== noteId
+                ? note
+                : { ...note, comments: [...note.comments, { id: crypto.randomUUID(), authorName, authorRole, text: trimmed, createdAt: Date.now() }] },
+            ),
+          },
+        };
+      });
+    },
+    [],
+  );
 
   const updateChildNickname = useCallback((childId: string, nickname: string) => {
     const trimmed = nickname.trim();
@@ -361,6 +505,34 @@ export function DashboardStoreProvider({ children }: { children: ReactNode }) {
     }));
   }, []);
 
+  const updateTeacherNickname = useCallback((teacherId: string, nickname: string) => {
+    const trimmed = nickname.trim();
+    setData((prev) => ({
+      ...prev,
+      teacher: prev.teacher.id === teacherId ? { ...prev.teacher, nickname: trimmed || undefined } : prev.teacher,
+      teachers: prev.teachers.map((t) => (t.id === teacherId ? { ...t, nickname: trimmed || undefined } : t)),
+    }));
+  }, []);
+
+  const sendMemberMessage = useCallback((teacherId: string, senderRole: ChatSender, senderName: string, text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    setData((prev) => {
+      const thread = prev.memberThreadsByTeacher[teacherId];
+      if (!thread) return prev;
+      return {
+        ...prev,
+        memberThreadsByTeacher: {
+          ...prev.memberThreadsByTeacher,
+          [teacherId]: {
+            ...thread,
+            messages: [...thread.messages, { id: crypto.randomUUID(), sender: senderRole, senderName, kind: "text", text: trimmed, time: Date.now() }],
+          },
+        },
+      };
+    });
+  }, []);
+
   const addHomeWidget = useCallback((id: FeatureId) => {
     setData((prev) => (prev.homeWidgets.includes(id) ? prev : { ...prev, homeWidgets: [...prev.homeWidgets, id] }));
   }, []);
@@ -372,6 +544,9 @@ export function DashboardStoreProvider({ children }: { children: ReactNode }) {
   const value = useMemo<DashboardStoreValue>(
     () => ({
       data,
+      workspaces,
+      activeWorkspaceId,
+      switchWorkspace,
       choosePartner,
       sendAiMessage,
       sendThreadMessage,
@@ -379,6 +554,7 @@ export function DashboardStoreProvider({ children }: { children: ReactNode }) {
       aiTyping,
       addNotice,
       togglePinNotice,
+      toggleNoticeBanner,
       deleteNotice,
       addClass,
       renameClass,
@@ -387,19 +563,27 @@ export function DashboardStoreProvider({ children }: { children: ReactNode }) {
       updateRolePermissions,
       deleteRole,
       assignTeacherRole,
+      removeTeacherMembership,
       addSupplyItem,
       addSupplyComment,
       addScheduleEvent,
+      updateScheduleEvent,
       deleteScheduleEvent,
       addPhoto,
       deletePhoto,
       addParentNote,
+      addParentNoteComment,
       updateChildNickname,
+      updateTeacherNickname,
+      sendMemberMessage,
       addHomeWidget,
       removeHomeWidget,
     }),
     [
       data,
+      workspaces,
+      activeWorkspaceId,
+      switchWorkspace,
       choosePartner,
       sendAiMessage,
       sendThreadMessage,
@@ -407,6 +591,7 @@ export function DashboardStoreProvider({ children }: { children: ReactNode }) {
       aiTyping,
       addNotice,
       togglePinNotice,
+      toggleNoticeBanner,
       deleteNotice,
       addClass,
       renameClass,
@@ -415,14 +600,19 @@ export function DashboardStoreProvider({ children }: { children: ReactNode }) {
       updateRolePermissions,
       deleteRole,
       assignTeacherRole,
+      removeTeacherMembership,
       addSupplyItem,
       addSupplyComment,
       addScheduleEvent,
+      updateScheduleEvent,
       deleteScheduleEvent,
       addPhoto,
       deletePhoto,
       addParentNote,
+      addParentNoteComment,
       updateChildNickname,
+      updateTeacherNickname,
+      sendMemberMessage,
       addHomeWidget,
       removeHomeWidget,
     ],

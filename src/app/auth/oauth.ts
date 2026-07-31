@@ -150,10 +150,14 @@ async function exchangeCodeForSession(input: {
   // const data = await response.json();
   // return { user: data.user, accessToken: data.accessToken, expiresAt: Date.now() + data.expiresIn * 1000 };
 
-  console.info(
-    `[Kindy] ${input.provider} 인가 코드를 받았습니다. 백엔드 토큰 교환이 아직 연결되지 않아 임시 세션을 만듭니다.`,
-    { code: input.code, hasCodeVerifier: Boolean(input.codeVerifier) },
-  );
+  if (import.meta.env.DEV) {
+    // 인가 코드는 자격증명에 준하는 값이라 개발 중에만 찍습니다.
+    // eslint-disable-next-line no-console
+    console.info(
+      `[Kindy] ${input.provider} 인가 코드를 받았습니다. 백엔드 토큰 교환이 아직 연결되지 않아 임시 세션을 만듭니다.`,
+      { code: input.code, hasCodeVerifier: Boolean(input.codeVerifier) },
+    );
+  }
   return createMockSession(input.provider);
 }
 

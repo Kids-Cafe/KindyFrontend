@@ -4,7 +4,11 @@ import {
   ArrowLeft, UserCircle, KeyRound, MapPin, School, UserX, Phone, Link2,
 } from "lucide-react";
 import { useAuth } from "@/app/auth/AuthContext";
-import { loginMockUser, updateMockUser } from "@/app/auth/mockSignup";
+import { changeMockPassword, loginMockUser, searchKindergartens } from "@/app/auth/mockSignup";
+import { isPasswordValid } from "@/app/auth/validation";
+import { ReceivedInvites } from "@/app/auth/ReceivedInvites";
+import type { KindergartenInfo } from "@/app/auth/types";
+import type { InviteTargetRole } from "@/app/dashboard/mock/membershipInvites";
 import { PROVIDERS, PROVIDER_ORDER } from "@/app/auth/providers";
 import { ProviderIcon } from "@/app/auth/ProviderIcon";
 import { UserAvatar } from "@/app/auth/UserAvatar";
@@ -53,14 +57,25 @@ function TextField({ value, onChange, placeholder, readOnly }: { value: string; 
   );
 }
 
-function SaveButton({ onClick, label = "저장하기" }: { onClick: () => void; label?: string }) {
+function SaveButton({
+  onClick,
+  label = "저장하기",
+  disabled = false,
+}: {
+  onClick: () => void;
+  label?: string;
+  /** 비밀번호 확인처럼 시간이 걸리는 처리 중에 중복 클릭을 막습니다. */
+  disabled?: boolean;
+}) {
   return (
     <button
       onClick={onClick}
-      className="w-full rounded-2xl font-bold text-sm text-white transition-all active:scale-[0.98]"
+      disabled={disabled}
+      aria-busy={disabled}
+      className="w-full rounded-2xl font-bold text-sm text-white transition-all active:scale-[0.98] disabled:opacity-60 disabled:active:scale-100"
       style={{ height: 48, background: "linear-gradient(135deg,#E879A0,#F472B6)" }}
     >
-      {label}
+      {disabled ? "확인 중…" : label}
     </button>
   );
 }
@@ -114,13 +129,16 @@ function MyPagePanel({ panel, onDone }: { panel: MenuKey; onDone: (message?: str
   const [newPw, setNewPw] = useState("");
   const [pwConfirm, setPwConfirm] = useState("");
   const [pwError, setPwError] = useState<string | null>(null);
+  /** 비밀번호 해싱 대조가 도는 동안 저장 버튼을 잠급니다. */
+  const [isVerifying, setIsVerifying] = useState(false);
   const [zonecode, setZonecode] = useState(user?.zonecode ?? "");
   const [address, setAddress] = useState(user?.address ?? "");
   const [addressDetail, setAddressDetail] = useState(user?.addressDetail ?? "");
   const [phone, setPhone] = useState(user?.phone ?? "");
   const [name, setName] = useState(user?.name ?? "");
   const [childNickname, setChildNickname] = useState(store?.data.myChild?.nickname ?? "");
-  const [selectedClassId, setSelectedClassId] = useState(store?.data.teacher.classId ?? "");
+  const [kinderQuery, setKinderQuery] = useState("");
+  const [kinderResults, setKinderResults] = useState<KindergartenInfo[]>([]);
   const [confirmWithdraw, setConfirmWithdraw] = useState(false);
   const [notifyNotices, setNotifyNotices] = useState(true);
   const [notifySchedule, setNotifySchedule] = useState(true);
@@ -129,19 +147,73 @@ function MyPagePanel({ panel, onDone }: { panel: MenuKey; onDone: (message?: str
   if (!user) return null;
 
   /** 이메일 계정은 저장 전에 현재 비밀번호를 확인합니다. 소셜 계정은 비밀번호가 없어 바로 저장합니다. */
-  function requirePassword(action: () => void) {
+  async function requirePassword(action: () => void) {
     if (user!.provider !== "email") {
       action();
       return;
     }
-    const result = loginMockUser(user!.loginId ?? user!.email, pwConfirm);
-    if (!result.ok) {
-      setPwError("비밀번호가 올바르지 않아요");
+    if (isVerifying) return;
+
+    setIsVerifying(true);
+    try {
+      const result = await loginMockUser(user!.loginId ?? user!.email, pwConfirm);
+      if (!result.ok) {
+        setPwError(
+          result.reason === "crypto-unavailable"
+            ? "보안 연결(HTTPS)에서만 비밀번호를 확인할 수 있어요"
+            : "비밀번호가 올바르지 않아요",
+        );
+        return;
+      }
+      setPwError(null);
+      setPwConfirm("");
+      action();
+    } catch (cause) {
+      console.error("[Kindy] 비밀번호 확인 실패", cause);
+      setPwError("확인 중 문제가 생겼어요. 잠시 후 다시 시도해주세요");
+    } finally {
+      setIsVerifying(false);
+    }
+  }
+
+  /**
+   * 비밀번호 변경입니다. 새 비밀번호에도 가입 때와 같은 규칙을 적용해야
+   * 변경 경로로 약한 비밀번호가 들어오는 걸 막을 수 있습니다.
+   */
+  async function handleChangePassword() {
+    if (isVerifying) return;
+
+    if (!isPasswordValid(newPw)) {
+      setPwError("새 비밀번호는 8자 이상, 영문/숫자/특수문자 중 2가지 이상 조합해주세요");
       return;
     }
-    setPwError(null);
-    setPwConfirm("");
-    action();
+    if (newPw === currentPw) {
+      setPwError("현재 비밀번호와 다른 비밀번호를 입력해주세요");
+      return;
+    }
+
+    setIsVerifying(true);
+    try {
+      const result = await loginMockUser(user!.loginId ?? user!.email, currentPw);
+      if (!result.ok) {
+        setPwError(
+          result.reason === "crypto-unavailable"
+            ? "보안 연결(HTTPS)에서만 비밀번호를 바꿀 수 있어요"
+            : "현재 비밀번호가 올바르지 않아요",
+        );
+        return;
+      }
+      await changeMockPassword(user!.id, newPw);
+      setPwError(null);
+      setCurrentPw("");
+      setNewPw("");
+      onDone("비밀번호가 변경되었어요");
+    } catch (cause) {
+      console.error("[Kindy] 비밀번호 변경 실패", cause);
+      setPwError("변경 중 문제가 생겼어요. 잠시 후 다시 시도해주세요");
+    } finally {
+      setIsVerifying(false);
+    }
   }
 
   async function handleAddressSearch() {
@@ -161,7 +233,7 @@ function MyPagePanel({ panel, onDone }: { panel: MenuKey; onDone: (message?: str
           <FieldLabel>별칭</FieldLabel>
           <TextField value={nickname} onChange={setNickname} placeholder="별칭을 입력하세요" />
           <PasswordConfirmField show={user.provider === "email"} value={pwConfirm} onChange={(v) => { setPwConfirm(v); setPwError(null); }} error={pwError} />
-          <SaveButton onClick={() => requirePassword(() => { updateProfile({ nickname }); onDone("별칭이 변경되었어요"); })} />
+          <SaveButton disabled={isVerifying} onClick={() => void requirePassword(() => { updateProfile({ nickname }); onDone("별칭이 변경되었어요"); })} />
         </div>
       );
 
@@ -183,16 +255,8 @@ function MyPagePanel({ panel, onDone }: { panel: MenuKey; onDone: (message?: str
               className="w-full rounded-2xl px-4 py-3 text-sm outline-none" style={{ background: "var(--input-background)", border: "1.5px solid #F3F4F6" }} />
           </div>
           <SaveButton
-            onClick={() => {
-              const result = loginMockUser(user.loginId ?? user.email, currentPw);
-              if (!result.ok) { setPwError("현재 비밀번호가 올바르지 않아요"); return; }
-              if (!newPw.trim()) { setPwError("새 비밀번호를 입력해주세요"); return; }
-              updateMockUser(user.id, { password: newPw });
-              setPwError(null);
-              setCurrentPw("");
-              setNewPw("");
-              onDone("비밀번호가 변경되었어요");
-            }}
+            disabled={isVerifying}
+            onClick={() => void handleChangePassword()}
             label="비밀번호 변경"
           />
         </div>
@@ -213,32 +277,60 @@ function MyPagePanel({ panel, onDone }: { panel: MenuKey; onDone: (message?: str
           <FieldLabel>상세주소</FieldLabel>
           <TextField value={addressDetail} onChange={setAddressDetail} placeholder="동/호수 등" />
           <PasswordConfirmField show={user.provider === "email"} value={pwConfirm} onChange={(v) => { setPwConfirm(v); setPwError(null); }} error={pwError} />
-          <SaveButton onClick={() => requirePassword(() => { updateProfile({ zonecode, address, addressDetail }); onDone("주소가 변경되었어요"); })} />
+          <SaveButton disabled={isVerifying} onClick={() => void requirePassword(() => { updateProfile({ zonecode, address, addressDetail }); onDone("주소가 변경되었어요"); })} />
         </div>
       );
 
-    case "kindergartenClass":
-      if (!store) {
-        return <p className="text-sm" style={{ color: "#6B7280" }}>대시보드에 로그인한 뒤에 이용할 수 있어요.</p>;
-      }
+    case "kindergartenClass": {
+      const inviteRole: InviteTargetRole = user.accountType === "child" ? "child" : user.role === "teacher" ? "teacher" : "parent";
       return (
         <div className="space-y-4">
-          <FieldLabel>소속 유치원</FieldLabel>
-          <TextField value={store.data.kindergarten.name} readOnly />
-          <FieldLabel>소속 반</FieldLabel>
-          <div className="flex flex-wrap gap-2">
-            {store.data.classes.map((c) => (
-              <button key={c.id} onClick={() => setSelectedClassId(c.id)}
-                className="px-3.5 py-2 rounded-full text-xs font-bold transition-all"
-                style={selectedClassId === c.id ? { background: "linear-gradient(135deg,#E879A0,#F472B6)", color: "white" } : { background: "#F9FAFB", color: "#6B7280", border: "1px solid #F3F4F6" }}>
-                {c.name}
+          <ReceivedInvites role={inviteRole} onAccepted={() => onDone("유치원 초대를 수락했어요")} />
+
+          {user.kindergarten ? (
+            <>
+              <FieldLabel>소속 유치원</FieldLabel>
+              <TextField value={user.kindergarten.name} readOnly />
+              {store && user.role === "teacher" && (
+                <>
+                  <FieldLabel>소속 반</FieldLabel>
+                  <TextField value={store.data.teacher.className} readOnly />
+                </>
+              )}
+            </>
+          ) : (
+            <p className="text-sm" style={{ color: "#6B7280" }}>아직 가입한 유치원이 없어요. 아래에서 검색해서 가입하거나, 원장님의 초대를 기다려주세요.</p>
+          )}
+
+          <div className="pt-2" style={{ borderTop: "1px solid #F3F4F6" }}>
+            <FieldLabel>유치원 검색해서 가입하기</FieldLabel>
+            <div className="flex gap-2 mb-3">
+              <TextField value={kinderQuery} onChange={setKinderQuery} placeholder="유치원 이름" />
+              <button
+                onClick={() => setKinderResults(searchKindergartens(kinderQuery))}
+                className="shrink-0 px-4 rounded-2xl text-xs font-bold"
+                style={{ background: "rgba(232,121,160,0.1)", color: "#E879A0", border: "1.5px solid #FBCFE8" }}
+              >
+                검색
               </button>
-            ))}
+            </div>
+            <div className="space-y-2">
+              {kinderResults.map((kg) => (
+                <button
+                  key={kg.id}
+                  onClick={() => { updateProfile({ kindergarten: kg }); onDone(`${kg.name}에 가입했어요`); }}
+                  className="w-full text-left rounded-2xl px-4 py-3 transition-all hover:scale-[1.01] active:scale-95"
+                  style={{ background: "#FAFAFA", border: "1.5px solid #E5E7EB" }}
+                >
+                  <p className="text-sm font-bold" style={{ color: "#1F0A3C" }}>{kg.name}</p>
+                  <p className="text-xs" style={{ color: "#9CA3AF" }}>{kg.address}</p>
+                </button>
+              ))}
+            </div>
           </div>
-          <PasswordConfirmField show={user.provider === "email"} value={pwConfirm} onChange={(v) => { setPwConfirm(v); setPwError(null); }} error={pwError} />
-          <SaveButton onClick={() => requirePassword(() => onDone("소속 반이 변경되었어요"))} />
         </div>
       );
+    }
 
     case "notifications":
       return (
@@ -282,7 +374,7 @@ function MyPagePanel({ panel, onDone }: { panel: MenuKey; onDone: (message?: str
           <FieldLabel>소속 반</FieldLabel>
           <TextField value={store.data.myChild.className} readOnly />
           <PasswordConfirmField show={user.provider === "email"} value={pwConfirm} onChange={(v) => { setPwConfirm(v); setPwError(null); }} error={pwError} />
-          <SaveButton onClick={() => requirePassword(() => { store.updateChildNickname(store.data.myChild!.id, childNickname); onDone("아이 정보가 변경되었어요"); })} />
+          <SaveButton disabled={isVerifying} onClick={() => void requirePassword(() => { store.updateChildNickname(store.data.myChild!.id, childNickname); onDone("아이 정보가 변경되었어요"); })} />
         </div>
       );
 
@@ -313,7 +405,7 @@ function MyPagePanel({ panel, onDone }: { panel: MenuKey; onDone: (message?: str
           <FieldLabel>전화번호</FieldLabel>
           <TextField value={phone} onChange={setPhone} placeholder="010-0000-0000" />
           <PasswordConfirmField show={user.provider === "email"} value={pwConfirm} onChange={(v) => { setPwConfirm(v); setPwError(null); }} error={pwError} />
-          <SaveButton onClick={() => requirePassword(() => { updateProfile({ phone }); onDone("전화번호가 변경되었어요"); })} />
+          <SaveButton disabled={isVerifying} onClick={() => void requirePassword(() => { updateProfile({ phone }); onDone("전화번호가 변경되었어요"); })} />
         </div>
       );
 
@@ -325,7 +417,7 @@ function MyPagePanel({ panel, onDone }: { panel: MenuKey; onDone: (message?: str
           <FieldLabel>이메일</FieldLabel>
           <TextField value={user.email} readOnly />
           <PasswordConfirmField show={user.provider === "email"} value={pwConfirm} onChange={(v) => { setPwConfirm(v); setPwError(null); }} error={pwError} />
-          <SaveButton onClick={() => requirePassword(() => { updateProfile({ name }); onDone("개인정보가 변경되었어요"); })} />
+          <SaveButton disabled={isVerifying} onClick={() => void requirePassword(() => { updateProfile({ name }); onDone("개인정보가 변경되었어요"); })} />
         </div>
       );
 

@@ -1,9 +1,13 @@
-import { useRef, useState } from "react";
-import { Camera, X } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import { Camera } from "lucide-react";
 import { Carousel, CarouselContent, CarouselItem, CarouselPrevious, CarouselNext } from "@/app/components/ui/carousel";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/app/components/ui/dialog";
 import { useDashboardStore } from "@/app/dashboard/DashboardStoreContext";
 import { useAuth } from "@/app/auth/AuthContext";
 import { getDisplayName } from "@/app/auth/getDisplayName";
+
+/** 사진 한 장의 최대 용량입니다. 원본 그대로 메모리에 들고 있어 너무 큰 파일은 막습니다. */
+const MAX_PHOTO_BYTES = 8 * 1024 * 1024;
 
 function formatDate(ms: number): string {
   const d = new Date(ms);
@@ -13,24 +17,40 @@ function formatDate(ms: number): string {
 /**
  * 유치원 공용 사진첩입니다. 그리드로 훑어보다가, 클릭하면 실제 앨범처럼 좌우로 넘기는
  * 전체화면 뷰어가 열립니다. 촬영/업로드는 파일 입력으로 처리합니다(백엔드 없이 목업 저장).
+ *
+ * 뷰어는 Radix Dialog 위에 올립니다. 직접 만든 오버레이로는 ESC 닫기, 포커스 가두기,
+ * 배경 스크롤 잠금을 전부 놓치기 때문입니다.
  */
 export function PhotoAlbumFeature() {
   const { user } = useAuth();
   const { data, addPhoto } = useDashboardStore();
   const [openIndex, setOpenIndex] = useState<number | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const photos = [...data.photos].sort((a, b) => b.takenAt - a.takenAt);
+  const photos = useMemo(() => [...data.photos].sort((a, b) => b.takenAt - a.takenAt), [data.photos]);
 
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
+    e.target.value = ""; // 같은 파일을 다시 골라도 change가 뜨도록 먼저 비웁니다.
     if (!file || !user) return;
+
+    setUploadError(null);
+    if (!file.type.startsWith("image/")) {
+      setUploadError("이미지 파일만 올릴 수 있어요.");
+      return;
+    }
+    if (file.size > MAX_PHOTO_BYTES) {
+      setUploadError("8MB보다 작은 사진으로 올려주세요.");
+      return;
+    }
+
     const reader = new FileReader();
     reader.onload = () => {
       if (typeof reader.result === "string") addPhoto(reader.result, getDisplayName(user));
     };
+    reader.onerror = () => setUploadError("사진을 읽지 못했어요. 다시 시도해주세요.");
     reader.readAsDataURL(file);
-    e.target.value = "";
   }
 
   return (
@@ -47,6 +67,10 @@ export function PhotoAlbumFeature() {
         <input ref={fileInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFile} />
       </div>
 
+      {uploadError && (
+        <p role="alert" className="text-xs font-bold mb-3" style={{ color: "#DC2626" }}>{uploadError}</p>
+      )}
+
       {photos.length === 0 ? (
         <p className="text-sm" style={{ color: "#A06080" }}>아직 등록된 사진이 없어요.</p>
       ) : (
@@ -55,26 +79,27 @@ export function PhotoAlbumFeature() {
             <button
               key={photo.id}
               onClick={() => setOpenIndex(i)}
+              aria-label={`${photo.caption ?? "사진"} 크게 보기`}
               className="rounded-2xl overflow-hidden border aspect-square transition-transform hover:scale-[1.02]"
               style={{ borderColor: "rgba(232,121,160,0.15)" }}
             >
-              <img src={photo.url} alt={photo.caption ?? "사진첩 이미지"} className="w-full h-full object-cover" />
+              <img src={photo.url} alt={photo.caption ?? "사진첩 이미지"} loading="lazy" className="w-full h-full object-cover" />
             </button>
           ))}
         </div>
       )}
 
-      {openIndex !== null && (
-        <div className="fixed inset-0 z-[9500] flex items-center justify-center p-6" role="dialog" aria-modal="true">
-          <div className="absolute inset-0 bg-black/80" onClick={() => setOpenIndex(null)} />
-          <button
-            onClick={() => setOpenIndex(null)}
-            aria-label="앨범 닫기"
-            className="absolute top-5 right-5 w-10 h-10 rounded-full flex items-center justify-center text-white transition-colors hover:bg-white/10 z-10"
-          >
-            <X className="w-5 h-5" />
-          </button>
-          <div className="relative w-full max-w-lg">
+      <Dialog open={openIndex !== null} onOpenChange={(open) => !open && setOpenIndex(null)}>
+        <DialogContent
+          overlayClassName="bg-black/80"
+          className="max-w-lg border-0 bg-transparent p-0 shadow-none [&>button]:text-white [&>button]:opacity-80"
+        >
+          <DialogTitle className="sr-only">사진첩 크게 보기</DialogTitle>
+          <DialogDescription className="sr-only">
+            좌우 화살표 키로 사진을 넘기고, ESC 키로 닫을 수 있어요.
+          </DialogDescription>
+
+          {openIndex !== null && (
             <Carousel opts={{ startIndex: openIndex, loop: true }}>
               <CarouselContent>
                 {photos.map((photo) => (
@@ -92,9 +117,9 @@ export function PhotoAlbumFeature() {
               <CarouselPrevious className="left-2" />
               <CarouselNext className="right-2" />
             </Carousel>
-          </div>
-        </div>
-      )}
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

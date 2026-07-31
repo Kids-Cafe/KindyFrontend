@@ -30,30 +30,37 @@ function DialogClose({
   return <DialogPrimitive.Close data-slot="dialog-close" {...props} />;
 }
 
-function DialogOverlay({
-  className,
-  ...props
-}: React.ComponentProps<typeof DialogPrimitive.Overlay>) {
-  return (
-    <DialogPrimitive.Overlay
-      data-slot="dialog-overlay"
-      className={cn(
-        "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-[150] bg-black/50",
-        className,
-      )}
-      {...props}
-    />
-  );
-}
+// Radix가 열림/닫힘 애니메이션을 제어하려고 오버레이에 ref를 넘깁니다.
+// React 18에서는 forwardRef 없이 함수 컴포넌트가 ref를 받을 수 없어
+// "Function components cannot be given refs" 경고가 나고 ref가 유실됩니다.
+const DialogOverlay = React.forwardRef<
+  React.ElementRef<typeof DialogPrimitive.Overlay>,
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay>
+>(({ className, ...props }, ref) => (
+  <DialogPrimitive.Overlay
+    ref={ref}
+    data-slot="dialog-overlay"
+    className={cn(
+      "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-[150] bg-black/50",
+      className,
+    )}
+    {...props}
+  />
+));
+DialogOverlay.displayName = "DialogOverlay";
 
 function DialogContent({
   className,
+  overlayClassName,
   children,
   ...props
-}: React.ComponentProps<typeof DialogPrimitive.Content>) {
+}: React.ComponentProps<typeof DialogPrimitive.Content> & {
+  /** 뒷배경 딤 처리를 조절합니다. 사진 뷰어처럼 더 어둡게 깔아야 할 때 씁니다. */
+  overlayClassName?: string;
+}) {
   return (
     <DialogPortal data-slot="dialog-portal">
-      <DialogOverlay />
+      <DialogOverlay className={overlayClassName} />
       <DialogPrimitive.Content
         data-slot="dialog-content"
         className={cn(

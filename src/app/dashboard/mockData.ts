@@ -8,9 +8,11 @@ import type {
   TeacherRecord,
   ChatThread,
   AiChatThread,
+  MemberChatThread,
   ParentNote,
 } from "@/app/dashboard/types";
 import { buildClasses, buildRoles, buildTeachers } from "@/app/dashboard/mock/classesAndRoles";
+import { findAcceptedInvite, listInvitesSentByKindergarten } from "@/app/dashboard/mock/membershipInvites";
 import { buildNotices } from "@/app/dashboard/mock/notices";
 import { buildSupplies } from "@/app/dashboard/mock/supplies";
 import { buildSchedule } from "@/app/dashboard/mock/schedule";
@@ -23,10 +25,32 @@ import { buildPhotos } from "@/app/dashboard/mock/photos";
  */
 
 const SEED_CHILDREN: Omit<ChildRecord, "kindergartenId" | "kindergartenName" | "teacherId">[] = [
+  // 해바라기반 (class-1)
   { id: "child-1", name: "김하늘", nickname: "하늘이", age: 6, gender: "female", classId: "class-1", className: "해바라기반", parentId: "parent-1", parentName: "김하늘 부모님", aiPartner: "kina", avatarEmoji: "🌻", avatarColor: "#F472B6" },
   { id: "child-2", name: "이서준", nickname: "서준이", age: 7, gender: "male", classId: "class-1", className: "해바라기반", parentId: "parent-2", parentName: "이서준 부모님", aiPartner: "kio", avatarEmoji: "🚀", avatarColor: "#60A5FA" },
   { id: "child-3", name: "박지우", nickname: "지우", age: 6, gender: "male", classId: "class-1", className: "해바라기반", parentId: "parent-3", parentName: "박지우 부모님", aiPartner: "kio", avatarEmoji: "🦖", avatarColor: "#86EFAC" },
   { id: "child-4", name: "최다은", nickname: "다은이", age: 7, gender: "female", classId: "class-1", className: "해바라기반", parentId: "parent-4", parentName: "최다은 부모님", aiPartner: "kina", avatarEmoji: "🎨", avatarColor: "#C084FC" },
+
+  // 햇님반 (class-2)
+  { id: "child-5", name: "정유진", nickname: "유진이", age: 6, gender: "female", classId: "class-2", className: "햇님반", parentId: "parent-5", parentName: "정유진 부모님", aiPartner: "kina", avatarEmoji: "🌼", avatarColor: "#F9D56E" },
+  { id: "child-6", name: "한도윤", nickname: "도윤이", age: 7, gender: "male", classId: "class-2", className: "햇님반", parentId: "parent-6", parentName: "한도윤 부모님", aiPartner: "kio", avatarEmoji: "⚽", avatarColor: "#60A5FA" },
+  { id: "child-7", name: "임소율", nickname: "소율이", age: 6, gender: "female", classId: "class-2", className: "햇님반", parentId: "parent-7", parentName: "임소율 부모님", aiPartner: "kina", avatarEmoji: "🐰", avatarColor: "#F472B6" },
+  { id: "child-8", name: "조은우", nickname: "은우", age: 7, gender: "male", classId: "class-2", className: "햇님반", parentId: "parent-8", parentName: "조은우 부모님", aiPartner: "kio", avatarEmoji: "🦁", avatarColor: "#FDBA74" },
+
+  // 장미반 (class-3)
+  { id: "child-9", name: "윤아린", nickname: "아린이", age: 6, gender: "female", classId: "class-3", className: "장미반", parentId: "parent-9", parentName: "윤아린 부모님", aiPartner: "kina", avatarEmoji: "🌹", avatarColor: "#F87171" },
+  { id: "child-10", name: "장태현", nickname: "태현이", age: 7, gender: "male", classId: "class-3", className: "장미반", parentId: "parent-10", parentName: "장태현 부모님", aiPartner: "kio", avatarEmoji: "🐯", avatarColor: "#FB923C" },
+  { id: "child-11", name: "서예은", nickname: "예은이", age: 6, gender: "female", classId: "class-3", className: "장미반", parentId: "parent-11", parentName: "서예은 부모님", aiPartner: "kina", avatarEmoji: "🦋", avatarColor: "#C084FC" },
+
+  // 무지개반 (class-4)
+  { id: "child-12", name: "문시우", nickname: "시우", age: 7, gender: "male", classId: "class-4", className: "무지개반", parentId: "parent-12", parentName: "문시우 부모님", aiPartner: "kio", avatarEmoji: "🌈", avatarColor: "#86EFAC" },
+  { id: "child-13", name: "배지안", nickname: "지안이", age: 6, gender: "female", classId: "class-4", className: "무지개반", parentId: "parent-13", parentName: "배지안 부모님", aiPartner: "kina", avatarEmoji: "🦄", avatarColor: "#F472B6" },
+  { id: "child-14", name: "노준서", nickname: "준서", age: 7, gender: "male", classId: "class-4", className: "무지개반", parentId: "parent-14", parentName: "노준서 부모님", aiPartner: "kio", avatarEmoji: "🐳", avatarColor: "#60A5FA" },
+
+  // 별빛반 (class-5)
+  { id: "child-15", name: "송하윤", nickname: "하윤이", age: 6, gender: "female", classId: "class-5", className: "별빛반", parentId: "parent-15", parentName: "송하윤 부모님", aiPartner: "kina", avatarEmoji: "⭐", avatarColor: "#FDE047" },
+  { id: "child-16", name: "권민준", nickname: "민준이", age: 7, gender: "male", classId: "class-5", className: "별빛반", parentId: "parent-16", parentName: "권민준 부모님", aiPartner: "kio", avatarEmoji: "🌙", avatarColor: "#A78BFA" },
+  { id: "child-17", name: "홍서아", nickname: "서아", age: 6, gender: "female", classId: "class-5", className: "별빛반", parentId: "parent-17", parentName: "홍서아 부모님", aiPartner: "kina", avatarEmoji: "✨", avatarColor: "#F9D56E" },
 ];
 
 const MOOD_CYCLE = ["happy", "excited", "calm", "happy", "sad", "excited", "calm"] as const;
@@ -135,7 +159,7 @@ function buildAiThread(child: ChildRecord): AiChatThread {
   };
 }
 
-function buildThread(child: ChildRecord, teacher: TeacherRecord): ChatThread {
+function buildThread(child: ChildRecord, classTeacher: TeacherRecord): ChatThread {
   const now = 1785300000000;
   return {
     id: `thread-${child.id}`,
@@ -143,31 +167,71 @@ function buildThread(child: ChildRecord, teacher: TeacherRecord): ChatThread {
     childNickname: child.nickname,
     parentId: child.parentId,
     parentName: child.parentName,
-    teacherId: teacher.id,
-    teacherName: teacher.name,
+    teacherId: classTeacher.id,
+    teacherName: classTeacher.name,
     messages: [
-      { id: `${child.id}-t-1`, sender: "teacher", senderName: teacher.name, kind: "text", text: `안녕하세요! ${child.nickname} 오늘 즐겁게 지냈어요 😊`, time: now - 1000 * 60 * 60 * 5 },
+      { id: `${child.id}-t-1`, sender: "teacher", senderName: classTeacher.name, kind: "text", text: `안녕하세요! ${child.nickname} 오늘 즐겁게 지냈어요 😊`, time: now - 1000 * 60 * 60 * 5 },
       { id: `${child.id}-t-2`, sender: "parent", senderName: child.parentName, kind: "text", text: "감사합니다 선생님! 집에서도 오늘 있었던 일 재밌게 얘기해주더라고요.", time: now - 1000 * 60 * 60 * 4 },
     ],
   };
 }
 
-/** 로그인한 사용자를 기준으로 대시보드에 필요한 목업 데이터 전체를 구성합니다. */
-export function buildDashboardData(user: AuthUser): DashboardData {
+function buildMemberThread(teacher: TeacherRecord, directorName: string): MemberChatThread {
+  const now = 1785300000000;
+  return {
+    id: `member-thread-${teacher.id}`,
+    teacherId: teacher.id,
+    teacherName: teacher.name,
+    directorName,
+    messages: [
+      { id: `${teacher.id}-m-1`, sender: "director", senderName: directorName, kind: "text", text: `${teacher.name}님 안녕하세요! 잘 부탁드려요 😊`, time: now - 1000 * 60 * 60 * 24 },
+    ],
+  };
+}
+
+/** 계정 정보(AuthUser)에서 대시보드 역할을 끌어냅니다. */
+export function resolveDashboardRole(user: AuthUser): DashboardData["role"] {
+  if (user.accountType === "child") return "child";
+  if (user.role !== "teacher") return "parent";
+  return user.teacherRole === "director" ? "director" : "teacher";
+}
+
+/**
+ * 로그인한 사용자를 기준으로 대시보드에 필요한 목업 데이터 전체를 구성합니다.
+ *
+ * `roleOverride`는 4역할 데모 계정 전용입니다. 계정의 실제 역할과 무관하게
+ * 원장/교사/학부모/아이 화면을 같은 유치원 위에서 나란히 띄워 보기 위한 값이며,
+ * 실제 사용자는 항상 `resolveDashboardRole()`이 정한 역할 하나만 갖습니다.
+ */
+export function buildDashboardData(user: AuthUser, roleOverride?: DashboardData["role"]): DashboardData {
   const displayName = getDisplayName(user);
   const kindergartenName = user.kindergarten?.name ?? "새싹유치원";
   const kindergartenId = user.kindergarten?.id ?? "kg-mock";
 
-  const isDirector = user.role === "teacher" && user.teacherRole === "director";
+  const role: DashboardData["role"] = roleOverride ?? resolveDashboardRole(user);
+
+  const isDirector = role === "director";
+  // 이 워크스페이스에서 "선생님 자리"에 로그인한 본인이 앉는지 여부입니다.
+  const isStaff = isDirector || role === "teacher";
+
+  // 원장의 초대(아이디로 검색해서 보낸 것)를 이 계정이 수락해 뒀다면, 그때 배정받은
+  // 반/권한을 그대로 이어받습니다. "받은 초대" 화면에서 수락하는 순간 확정됩니다.
+  const acceptedInvite = role === "teacher" ? findAcceptedInvite(kindergartenId, user.id) : undefined;
+
+  // 초대 없이 직접 검색해 들어온 교사(또는 원장)는 데모용 기본 반을 그대로 씁니다.
+  // 초대를 수락해서 들어왔다면, 그 초대에 반이 지정돼 있지 않은 경우("유치원 소속")
+  // classId를 비워 둬 특정 반에 속하지 않은 상태를 그대로 반영합니다.
+  const teacherClassId = acceptedInvite ? acceptedInvite.classId ?? "" : "class-1";
+  const teacherClassName = acceptedInvite ? acceptedInvite.className ?? "유치원 소속" : "해바라기반";
 
   const teacher: TeacherRecord = {
-    id: user.role === "teacher" ? user.id : "teacher-seed",
-    name: user.role === "teacher" ? displayName : "박지현 선생님",
-    classId: "class-1",
-    className: "해바라기반",
+    id: isStaff ? user.id : "teacher-seed",
+    name: isStaff ? displayName : "박지현 선생님",
+    classId: teacherClassId,
+    className: teacherClassName,
     kindergartenId,
     kindergartenName,
-    roleIds: isDirector ? [] : ["role-senior"],
+    roleIds: acceptedInvite?.roleIds ?? (isDirector ? [] : ["role-senior"]),
   };
 
   let seedChildren = SEED_CHILDREN.map((c) => ({
@@ -176,9 +240,6 @@ export function buildDashboardData(user: AuthUser): DashboardData {
     kindergartenName,
     teacherId: teacher.id,
   })) as ChildRecord[];
-
-  const role: DashboardData["role"] =
-    user.accountType === "child" ? "child" : user.role === "teacher" ? (isDirector ? "director" : "teacher") : "parent";
 
   let me: ChildRecord | undefined;
   let myChild: ChildRecord | undefined;
@@ -202,6 +263,28 @@ export function buildDashboardData(user: AuthUser): DashboardData {
     seedChildren = [myChild, ...seedChildren.slice(1)];
   }
 
+  const directorName = isDirector ? displayName : "김민지 원장";
+
+  // 초대를 수락한 교사만 멤버 목록에 합칩니다(대기/거절 상태는 원장의 "초대 목록"에서만 보입니다).
+  // 로그인한 본인은 위 `teacher`가 이미 대표하므로 중복 추가하지 않습니다.
+  const acceptedTeacherInvites: TeacherRecord[] = listInvitesSentByKindergarten(kindergartenId)
+    .filter((invite) => invite.role === "teacher" && invite.status === "accepted" && invite.targetUserId !== teacher.id)
+    .map((invite) => ({
+      id: invite.targetUserId,
+      name: invite.targetName,
+      classId: invite.classId ?? "",
+      className: invite.className ?? "유치원 소속",
+      kindergartenId,
+      kindergartenName,
+      roleIds: invite.roleIds ?? [],
+    }));
+
+  const teachers: TeacherRecord[] = [...buildTeachers(kindergartenId, kindergartenName, teacher), ...acceptedTeacherInvites];
+  const memberThreadsByTeacher: DashboardData["memberThreadsByTeacher"] = {};
+  for (const t of teachers) {
+    memberThreadsByTeacher[t.id] = buildMemberThread(t, directorName);
+  }
+
   const diaryByChild: DashboardData["diaryByChild"] = {};
   const reportsByChild: DashboardData["reportsByChild"] = {};
   const threadsByChild: DashboardData["threadsByChild"] = {};
@@ -209,14 +292,14 @@ export function buildDashboardData(user: AuthUser): DashboardData {
   const parentNotesByChild: DashboardData["parentNotesByChild"] = {};
 
   for (const child of seedChildren) {
+    // 아이가 속한 반의 실제 담임 교사를 찾아 대화 상대로 씁니다(반마다 담임이 다르므로).
+    const classTeacher = teachers.find((t) => t.classId === child.classId) ?? teacher;
     diaryByChild[child.id] = buildDiary(child);
     reportsByChild[child.id] = buildReports(child, seedFromId(child.id));
-    threadsByChild[child.id] = buildThread(child, teacher);
+    threadsByChild[child.id] = buildThread(child, classTeacher);
     aiThreadsByChild[child.id] = buildAiThread(child);
-    parentNotesByChild[child.id] = buildParentNotes(child, teacher);
+    parentNotesByChild[child.id] = buildParentNotes(child, classTeacher);
   }
-
-  const directorName = isDirector ? displayName : "김민지 원장";
 
   const defaultHomeWidgets: DashboardData["homeWidgets"] =
     role === "teacher"
@@ -232,20 +315,21 @@ export function buildDashboardData(user: AuthUser): DashboardData {
     kindergarten: { id: kindergartenId, name: kindergartenName },
     me,
     myChild,
-    myClassChildren: role === "teacher" ? seedChildren : undefined,
+    myClassChildren: role === "teacher" ? seedChildren.filter((c) => c.classId === teacher.classId) : undefined,
     teacher,
     classChildren: seedChildren,
     diaryByChild,
     reportsByChild,
     threadsByChild,
     aiThreadsByChild,
+    memberThreadsByTeacher,
 
     classes: buildClasses(kindergartenId),
     roles: buildRoles(),
-    teachers: buildTeachers(kindergartenId, kindergartenName, teacher),
+    teachers,
     notices: buildNotices(kindergartenId, directorName),
-    suppliesByClass: { [teacher.classId]: buildSupplies(teacher.classId, teacher.name) },
-    scheduleEvents: buildSchedule(kindergartenId, teacher.classId, teacher.name),
+    suppliesByClass: teacher.classId ? { [teacher.classId]: buildSupplies(teacher.classId, teacher.name) } : {},
+    scheduleEvents: buildSchedule(kindergartenId, teacher.classId || undefined, teacher.name),
     photos: buildPhotos(kindergartenId),
     parentNotesByChild,
     homeWidgets: defaultHomeWidgets,
@@ -260,6 +344,101 @@ function buildParentNotes(child: ChildRecord, teacher: TeacherRecord): ParentNot
       authorName: teacher.name,
       text: `${child.nickname}가 요즘 부쩍 자신감이 늘었어요. 집에서도 스스로 해보려는 모습을 보이면 많이 칭찬해주세요!`,
       createdAt: 1785300000000 - 1000 * 60 * 60 * 30,
+      comments: [],
     },
   ];
+}
+
+/** "타 유치원" 데모 워크스페이스의 유치원 정보입니다. 원장도 자기 유치원 밖에서는 학부모일 수 있다는 걸 보여줍니다. */
+export const ALT_KINDERGARTEN = { id: "kg-alt-demo", name: "반짝반짝유치원" };
+
+const ALT_CLASSMATES: Omit<ChildRecord, "kindergartenId" | "kindergartenName" | "teacherId">[] = [
+  { id: "alt-child-2", name: "우도현", nickname: "도현이", age: 6, gender: "male", classId: "alt-class-1", className: "민들레반", parentId: "alt-parent-2", parentName: "우도현 부모님", aiPartner: "kio", avatarEmoji: "🐥", avatarColor: "#FDE047" },
+  { id: "alt-child-3", name: "표나연", nickname: "나연이", age: 7, gender: "female", classId: "alt-class-1", className: "민들레반", parentId: "alt-parent-3", parentName: "표나연 부모님", aiPartner: "kina", avatarEmoji: "🌷", avatarColor: "#F472B6" },
+];
+
+/**
+ * 원장이 자신의 유치원을 관리하는 것과 별개로, 다른 유치원에 학부모로 등록되어 있을 수도 있는
+ * 상황을 보여주는 데모 워크스페이스입니다. 좌측 서버 레일의 두 번째 아이콘에서 진입하며,
+ * 이 화면 안에서는 완전히 다른 유치원의 "학부모" 계정처럼 동작합니다.
+ */
+export function buildAltDashboardData(user: AuthUser): DashboardData {
+  const displayName = getDisplayName(user);
+  const { id: kindergartenId, name: kindergartenName } = ALT_KINDERGARTEN;
+  const classId = "alt-class-1";
+  const className = "민들레반";
+
+  const teacher: TeacherRecord = {
+    id: "alt-teacher-1",
+    name: "오하늘 선생님",
+    classId,
+    className,
+    kindergartenId,
+    kindergartenName,
+    roleIds: [],
+  };
+
+  const myChild: ChildRecord = {
+    id: "alt-child-1",
+    name: "김도담",
+    nickname: "도담이",
+    age: 6,
+    gender: "male",
+    classId,
+    className,
+    kindergartenId,
+    kindergartenName,
+    parentId: user.id,
+    parentName: displayName,
+    teacherId: teacher.id,
+    aiPartner: "kina",
+    avatarEmoji: "🐣",
+    avatarColor: "#86EFAC",
+  };
+
+  const classChildren: ChildRecord[] = [
+    myChild,
+    ...ALT_CLASSMATES.map((c) => ({ ...c, kindergartenId, kindergartenName, teacherId: teacher.id })),
+  ];
+
+  const diaryByChild: DashboardData["diaryByChild"] = {};
+  const reportsByChild: DashboardData["reportsByChild"] = {};
+  const threadsByChild: DashboardData["threadsByChild"] = {};
+  const aiThreadsByChild: DashboardData["aiThreadsByChild"] = {};
+  const parentNotesByChild: DashboardData["parentNotesByChild"] = {};
+
+  for (const child of classChildren) {
+    diaryByChild[child.id] = buildDiary(child);
+    reportsByChild[child.id] = buildReports(child, seedFromId(child.id));
+    threadsByChild[child.id] = buildThread(child, teacher);
+    aiThreadsByChild[child.id] = buildAiThread(child);
+    parentNotesByChild[child.id] = buildParentNotes(child, teacher);
+  }
+
+  const memberThreadsByTeacher: DashboardData["memberThreadsByTeacher"] = {
+    [teacher.id]: buildMemberThread(teacher, "원장 선생님"),
+  };
+
+  return {
+    role: "parent",
+    kindergarten: { id: kindergartenId, name: kindergartenName },
+    myChild,
+    teacher,
+    classChildren,
+    diaryByChild,
+    reportsByChild,
+    threadsByChild,
+    aiThreadsByChild,
+    memberThreadsByTeacher,
+
+    classes: [{ id: classId, name: className, kindergartenId }],
+    roles: [],
+    teachers: [teacher],
+    notices: buildNotices(kindergartenId, "박서연 원장"),
+    suppliesByClass: { [classId]: buildSupplies(classId, teacher.name) },
+    scheduleEvents: buildSchedule(kindergartenId, classId, teacher.name),
+    photos: buildPhotos(kindergartenId),
+    parentNotesByChild,
+    homeWidgets: ["schedule", "photos"],
+  };
 }

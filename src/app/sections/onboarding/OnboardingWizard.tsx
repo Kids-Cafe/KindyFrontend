@@ -3,6 +3,7 @@ import { MiniStar, KioSVG, KinaSVG } from "@/app/components/decorative";
 import { useAuth } from "@/app/auth/AuthContext";
 import type { AuthUser, TeacherRole, UserRole } from "@/app/auth/types";
 import { registerKindergarten } from "@/app/auth/mockSignup";
+import { ReceivedInvites } from "@/app/auth/ReceivedInvites";
 import { RoleStep } from "@/app/sections/onboarding/steps/RoleStep";
 import { NicknameStep } from "@/app/sections/onboarding/steps/NicknameStep";
 import { TeacherRoleStep } from "@/app/sections/onboarding/steps/TeacherRoleStep";
@@ -112,17 +113,23 @@ export function OnboardingWizard({ onComplete }: { onComplete: () => void }) {
         )}
 
         {step === "kinder" && teacherRole === "teacher" && (
-          <KindergartenSearchStep
-            onSelect={(kindergarten) => finish({ role: "teacher", teacherRole: "teacher", kindergarten })}
-            onSkip={() => finish({ role: "teacher", teacherRole: "teacher" })}
-          />
+          <>
+            <ReceivedInvites role="teacher" onAccepted={() => finish({})} />
+            <KindergartenSearchStep
+              onSelect={(kindergarten) => finish({ role: "teacher", teacherRole: "teacher", kindergarten })}
+              onSkip={() => finish({ role: "teacher", teacherRole: "teacher" })}
+            />
+          </>
         )}
 
         {step === "kinderParent" && (
-          <KindergartenSearchStep
-            onSelect={(kindergarten) => finish({ role: "parent", nickname: nickname ?? undefined, kindergarten })}
-            onSkip={() => finish({ role: "parent", nickname: nickname ?? undefined })}
-          />
+          <>
+            <ReceivedInvites role={isChildAccount ? "child" : "parent"} onAccepted={() => finish({})} />
+            <KindergartenSearchStep
+              onSelect={(kindergarten) => finish({ role: "parent", nickname: nickname ?? undefined, kindergarten })}
+              onSkip={() => finish({ role: "parent", nickname: nickname ?? undefined })}
+            />
+          </>
         )}
       </div>
     </div>

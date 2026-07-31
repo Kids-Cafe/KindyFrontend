@@ -66,7 +66,7 @@ export function AiChatFeature({ childId, partner }: { childId: string; partner: 
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleSend()}
+          onKeyDown={(e) => e.key === "Enter" && !e.nativeEvent.isComposing && handleSend()}
           placeholder={`${char.name}에게 오늘 있었던 일을 이야기해보세요`}
           className="flex-1 rounded-full px-4 py-2.5 text-sm outline-none"
           style={{ background: "var(--input-background)", border: "1px solid rgba(232,121,160,0.2)" }}

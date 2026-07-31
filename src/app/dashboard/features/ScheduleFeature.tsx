@@ -1,9 +1,14 @@
 import { useMemo, useState } from "react";
-import { CalendarDays, Plus, Bell, X } from "lucide-react";
+import { CalendarDays, LayoutList, Plus, Bell, X, Pencil, Trash2 } from "lucide-react";
 import { useDashboardStore } from "@/app/dashboard/DashboardStoreContext";
 import { useAuth } from "@/app/auth/AuthContext";
 import { getDisplayName } from "@/app/auth/getDisplayName";
 import type { ScheduleEvent } from "@/app/dashboard/types";
+import { CalendarMonthView } from "@/app/dashboard/features/CalendarMonthView";
+import { DayEventDialog } from "@/app/dashboard/features/DayEventDialog";
+import { DatePickerButton } from "@/app/dashboard/features/DatePickerButton";
+import { TimePickerButton } from "@/app/dashboard/features/TimePickerButton";
+import { useConfirm } from "@/app/components/ConfirmDialog";
 
 function daysUntil(dateStr: string): number {
   const today = new Date();
@@ -58,8 +63,71 @@ export function UpcomingScheduleBanner() {
   );
 }
 
-function EventRow({ event }: { event: ScheduleEvent }) {
+function EventRow({ event, canEdit }: { event: ScheduleEvent; canEdit: boolean }) {
+  const { data, updateScheduleEvent, deleteScheduleEvent } = useDashboardStore();
+  const { ask, dialog } = useConfirm();
+  const [editing, setEditing] = useState(false);
+  const [title, setTitle] = useState(event.title);
+  const [date, setDate] = useState(event.date);
+  const [time, setTime] = useState(event.time ?? "");
+  const [classId, setClassId] = useState<string | undefined>(event.classId);
+
   const upcoming = daysUntil(event.date) >= 0;
+
+  function startEdit() {
+    setTitle(event.title);
+    setDate(event.date);
+    setTime(event.time ?? "");
+    setClassId(event.classId);
+    setEditing(true);
+  }
+
+  function handleSave() {
+    if (!title.trim() || !date) return;
+    updateScheduleEvent(event.id, title.trim(), date, time || undefined, data.role === "director" ? classId : event.classId);
+    setEditing(false);
+  }
+
+  if (editing) {
+    return (
+      <div className="rounded-2xl bg-card border p-4 space-y-2.5" style={{ borderColor: "rgba(232,121,160,0.2)" }}>
+        <input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="일정 제목"
+          className="w-full rounded-xl px-3.5 py-2.5 text-sm font-bold outline-none"
+          style={{ background: "var(--input-background)", border: "1px solid rgba(232,121,160,0.2)", color: "#3B1355" }}
+        />
+        <div className="flex gap-2">
+          <div className="flex-1">
+            <DatePickerButton value={date} onChange={setDate} />
+          </div>
+          <div className="flex-1">
+            <TimePickerButton value={time} onChange={setTime} />
+          </div>
+        </div>
+        {data.role === "director" && (
+          <select
+            value={classId ?? ""}
+            onChange={(e) => setClassId(e.target.value || undefined)}
+            className="w-full rounded-xl px-3.5 py-2 text-xs outline-none"
+            style={{ background: "var(--input-background)", border: "1px solid rgba(232,121,160,0.2)", color: "#6B3580" }}
+          >
+            <option value="">유치원 전체 대상</option>
+            {data.classes.map((c) => (
+              <option key={c.id} value={c.id}>{c.name} 대상</option>
+            ))}
+          </select>
+        )}
+        <div className="flex justify-end gap-2">
+          <button onClick={() => setEditing(false)} className="text-xs font-bold px-3 py-2 rounded-full" style={{ color: "#A06080" }}>취소</button>
+          <button onClick={handleSave} className="text-xs font-bold px-4 py-2 rounded-full text-white transition-transform active:scale-95"
+            style={{ background: "linear-gradient(135deg,#E879A0,#F472B6)" }}>저장</button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex items-center gap-3 rounded-2xl bg-card border p-3.5" style={{ borderColor: "rgba(232,121,160,0.15)", opacity: upcoming ? 1 : 0.6 }}>
       <div
@@ -73,6 +141,32 @@ function EventRow({ event }: { event: ScheduleEvent }) {
         <p className="text-sm font-bold truncate" style={{ color: "#3B1355" }}>{event.title}</p>
         <p className="text-xs" style={{ color: "#A06080" }}>{event.time ? `${event.time} · ` : ""}{event.classId ? "우리 반" : "유치원 전체"} · {event.createdBy}</p>
       </div>
+      {canEdit && (
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            onClick={startEdit}
+            title="수정"
+            className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors hover:bg-black/[0.04]"
+          >
+            <Pencil className="w-3.5 h-3.5" style={{ color: "#A06080" }} />
+          </button>
+          <button
+            onClick={() =>
+              ask({
+                title: `'${event.title}' 일정을 삭제할까요?`,
+                description: "이 일정을 보고 있던 학부모에게도 더 이상 보이지 않아요. 되돌릴 수 없어요.",
+                onConfirm: () => deleteScheduleEvent(event.id),
+              })
+            }
+            title="삭제"
+            aria-label={`${event.title} 일정 삭제`}
+            className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors hover:bg-black/[0.04]"
+          >
+            <Trash2 className="w-3.5 h-3.5" style={{ color: "#F87171" }} />
+          </button>
+        </div>
+      )}
+      {dialog}
     </div>
   );
 }
@@ -81,11 +175,13 @@ function EventRow({ event }: { event: ScheduleEvent }) {
 export function ScheduleFeature() {
   const { user } = useAuth();
   const { data, addScheduleEvent } = useDashboardStore();
+  const [view, setView] = useState<"list" | "calendar">("list");
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [composing, setComposing] = useState(false);
   const [title, setTitle] = useState("");
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
-  const [wholeKindergarten, setWholeKindergarten] = useState(false);
+  const [targetClassId, setTargetClassId] = useState<string | undefined>(undefined);
 
   const canWrite = data.role === "teacher" || data.role === "director";
   const classId = data.role === "teacher" ? data.teacher.classId : data.role === "parent" ? data.myChild?.classId : data.role === "child" ? data.me?.classId : undefined;
@@ -96,10 +192,11 @@ export function ScheduleFeature() {
 
   function handleSubmit() {
     if (!title.trim() || !date || !user) return;
-    addScheduleEvent(title.trim(), date, time || undefined, getDisplayName(user), wholeKindergarten ? undefined : classId);
+    addScheduleEvent(title.trim(), date, time || undefined, getDisplayName(user), data.role === "director" ? targetClassId : classId);
     setTitle("");
     setDate("");
     setTime("");
+    setTargetClassId(undefined);
     setComposing(false);
   }
 
@@ -110,46 +207,86 @@ export function ScheduleFeature() {
           <CalendarDays className="w-3.5 h-3.5" />
           일정
         </div>
-        {canWrite && !composing && (
+        <div className="flex items-center gap-2">
           <button
-            onClick={() => setComposing(true)}
-            className="flex items-center gap-1 text-xs font-bold px-3 py-1.5 rounded-full text-white transition-transform active:scale-95"
-            style={{ background: "linear-gradient(135deg,#E879A0,#F472B6)" }}
+            onClick={() => setView((v) => (v === "list" ? "calendar" : "list"))}
+            className="flex items-center gap-1 text-xs font-bold px-3 py-1.5 rounded-full transition-colors"
+            style={{ background: "rgba(232,121,160,0.12)", color: "#E879A0" }}
           >
-            <Plus className="w-3.5 h-3.5" /> 일정 등록
+            {view === "list" ? (
+              <>
+                <CalendarDays className="w-3.5 h-3.5" /> 달력 보기
+              </>
+            ) : (
+              <>
+                <LayoutList className="w-3.5 h-3.5" /> 목록 보기
+              </>
+            )}
           </button>
-        )}
+          {view === "list" && canWrite && !composing && (
+            <button
+              onClick={() => setComposing(true)}
+              className="flex items-center gap-1 text-xs font-bold px-3 py-1.5 rounded-full text-white transition-transform active:scale-95"
+              style={{ background: "linear-gradient(135deg,#E879A0,#F472B6)" }}
+            >
+              <Plus className="w-3.5 h-3.5" /> 일정 등록
+            </button>
+          )}
+        </div>
       </div>
 
-      {canWrite && composing && (
+      {view === "list" && canWrite && composing && (
         <div className="rounded-2xl bg-card border p-4 mb-4 space-y-2.5" style={{ borderColor: "rgba(232,121,160,0.2)" }}>
           <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="일정 제목"
             className="w-full rounded-xl px-3.5 py-2.5 text-sm font-bold outline-none"
             style={{ background: "var(--input-background)", border: "1px solid rgba(232,121,160,0.2)", color: "#3B1355" }} />
           <div className="flex gap-2">
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value)}
-              className="flex-1 rounded-xl px-3.5 py-2 text-xs outline-none"
-              style={{ background: "var(--input-background)", border: "1px solid rgba(232,121,160,0.2)", color: "#6B3580" }} />
-            <input type="time" value={time} onChange={(e) => setTime(e.target.value)}
-              className="flex-1 rounded-xl px-3.5 py-2 text-xs outline-none"
-              style={{ background: "var(--input-background)", border: "1px solid rgba(232,121,160,0.2)", color: "#6B3580" }} />
+            <div className="flex-1">
+              <DatePickerButton value={date} onChange={setDate} />
+            </div>
+            <div className="flex-1">
+              <TimePickerButton value={time} onChange={setTime} />
+            </div>
           </div>
-          <label className="flex items-center gap-2 text-xs" style={{ color: "#6B3580" }}>
-            <input type="checkbox" checked={wholeKindergarten} onChange={(e) => setWholeKindergarten(e.target.checked)} />
-            유치원 전체 대상 일정이에요
-          </label>
+          {data.role === "director" ? (
+            <select
+              value={targetClassId ?? ""}
+              onChange={(e) => setTargetClassId(e.target.value || undefined)}
+              className="w-full rounded-xl px-3.5 py-2 text-xs outline-none"
+              style={{ background: "var(--input-background)", border: "1px solid rgba(232,121,160,0.2)", color: "#6B3580" }}
+            >
+              <option value="">유치원 전체 대상</option>
+              {data.classes.map((c) => (
+                <option key={c.id} value={c.id}>{c.name} 대상</option>
+              ))}
+            </select>
+          ) : (
+            <p className="text-xs" style={{ color: "#A06080" }}>{data.teacher.className} 반 일정으로 등록돼요.</p>
+          )}
           <div className="flex justify-end gap-2">
-            <button onClick={() => setComposing(false)} className="text-xs font-bold px-3 py-2 rounded-full" style={{ color: "#A06080" }}>취소</button>
+            <button onClick={() => { setComposing(false); setTargetClassId(undefined); }} className="text-xs font-bold px-3 py-2 rounded-full" style={{ color: "#A06080" }}>취소</button>
             <button onClick={handleSubmit} className="text-xs font-bold px-4 py-2 rounded-full text-white transition-transform active:scale-95"
               style={{ background: "linear-gradient(135deg,#E879A0,#F472B6)" }}>등록</button>
           </div>
         </div>
       )}
 
-      <div className="space-y-2.5">
-        {events.length === 0 && <p className="text-sm" style={{ color: "#A06080" }}>등록된 일정이 없어요.</p>}
-        {events.map((e) => <EventRow key={e.id} event={e} />)}
-      </div>
+      {view === "list" ? (
+        <div className="space-y-2.5">
+          {events.length === 0 && <p className="text-sm" style={{ color: "#A06080" }}>등록된 일정이 없어요.</p>}
+          {events.map((e) => (
+            <EventRow
+              key={e.id}
+              event={e}
+              canEdit={data.role === "director" || (data.role === "teacher" && e.classId === classId)}
+            />
+          ))}
+        </div>
+      ) : (
+        <CalendarMonthView events={events} onSelectDate={setSelectedDate} />
+      )}
+
+      <DayEventDialog dateStr={selectedDate} onClose={() => setSelectedDate(null)} />
     </div>
   );
 }

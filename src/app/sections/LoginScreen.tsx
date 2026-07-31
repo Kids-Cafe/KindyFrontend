@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { X, Loader2 } from "lucide-react";
-import mushroomBg from "@/imports/image_22d709cf.png";
+import mushroomBg from "@/imports/image_22d709cf.jpg";
 import { MiniStar, KioSVG, KinaSVG } from "@/app/components/decorative";
 import { useAuth } from "@/app/auth/AuthContext";
 import { PROVIDERS, PROVIDER_ORDER, isMockMode } from "@/app/auth/providers";
@@ -23,13 +23,14 @@ export function LoginScreen({
   const [pw, setPw] = useState("");
   const [showPw, setShowPw] = useState(false);
 
-  const { loginWith, loginWithPassword, pendingProvider, error } = useAuth();
+  const { loginWith, loginWithPassword, pendingProvider, isSubmittingPassword, error } = useAuth();
   // 하나라도 진행 중이면 나머지 버튼은 잠급니다.
-  const isBusy = pendingProvider !== null;
+  const isBusy = pendingProvider !== null || isSubmittingPassword;
 
   function handleLoginSubmit(e: { preventDefault: () => void }) {
     e.preventDefault();
-    loginWithPassword(loginId, pw);
+    if (isBusy) return; // 비밀번호 대조 중 엔터 연타로 중복 제출되는 걸 막습니다.
+    void loginWithPassword(loginId, pw);
   }
 
   return (
@@ -158,13 +159,15 @@ export function LoginScreen({
           {/* 기본 버튼 */}
           <button
             type="submit"
-            className="w-full rounded-2xl font-bold text-white text-base transition-all hover:opacity-90 active:scale-[0.98] mb-5"
+            disabled={isBusy}
+            aria-busy={isSubmittingPassword}
+            className="w-full rounded-2xl font-bold text-white text-base transition-all hover:opacity-90 active:scale-[0.98] mb-5 disabled:opacity-60 disabled:active:scale-100"
             style={{
               height:52,
               background:"linear-gradient(135deg, #E879A0 0%, #F472B6 50%, #C084FC 100%)",
               boxShadow:"0 4px 20px rgba(232,121,160,0.40)",
             }}>
-            로그인
+            {isSubmittingPassword ? "로그인 중…" : "로그인"}
           </button>
           </form>
 

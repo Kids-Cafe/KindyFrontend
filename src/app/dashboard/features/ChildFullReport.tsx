@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { BookOpen, Sparkles, MessagesSquare, Phone, Send } from "lucide-react";
+import { Sparkles, MessagesSquare, Phone, Send } from "lucide-react";
 import { useDashboardStore } from "@/app/dashboard/DashboardStoreContext";
 import { useAuth } from "@/app/auth/AuthContext";
 import { getDisplayName } from "@/app/auth/getDisplayName";
@@ -7,25 +7,22 @@ import { REPORT_CATEGORY_ORDER, REPORT_META } from "@/app/dashboard/reportMeta";
 import { ReportByCategory } from "@/app/dashboard/reports";
 import type { ChildRecord } from "@/app/dashboard/types";
 
+// 키가 한글이라 따옴표로 감쌉니다. 식별자로 그냥 쓰면 유효하긴 하지만
+// 편집기·도구에 따라 비 ASCII 식별자 경고가 붙습니다.
 const TRAIT_TIPS: Record<string, string> = {
-  사교성: "친구들과의 놀이를 더 많이 만들어주면 사회성이 한층 더 자랄 거예요.",
-  창의성: "정답이 없는 열린 질문(\"이건 왜 이럴까?\")을 자주 던져보세요.",
-  집중력: "짧은 시간이라도 방해받지 않는 몰입 놀이 시간을 마련해주세요.",
-  활동성: "충분히 뛰어놀 수 있는 바깥 활동을 자주 계획해주세요.",
-  감수성: "감정을 표현했을 때 판단 없이 먼저 들어주는 것이 큰 도움이 돼요.",
+  "사교성": "친구들과의 놀이를 더 많이 만들어주면 사회성이 한층 더 자랄 거예요.",
+  "창의성": '정답이 없는 열린 질문("이건 왜 이럴까?")을 자주 던져보세요.',
+  "집중력": "짧은 시간이라도 방해받지 않는 몰입 놀이 시간을 마련해주세요.",
+  "활동성": "충분히 뛰어놀 수 있는 바깥 활동을 자주 계획해주세요.",
+  "감수성": "감정을 표현했을 때 판단 없이 먼저 들어주는 것이 큰 도움이 돼요.",
 };
-
-function formatDate(iso: string): string {
-  const d = new Date(iso);
-  return `${d.getMonth() + 1}월 ${d.getDate()}일`;
-}
 
 function formatDateTime(ms: number): string {
   const d = new Date(ms);
   return `${d.getMonth() + 1}월 ${d.getDate()}일`;
 }
 
-function SectionHeading({ icon: Icon, children }: { icon: typeof BookOpen; children: React.ReactNode }) {
+function SectionHeading({ icon: Icon, children }: { icon: typeof Sparkles; children: React.ReactNode }) {
   return (
     <div className="flex items-center gap-2 mb-3 mt-8 first:mt-0">
       <Icon className="w-4 h-4" style={{ color: "#E879A0" }} />
@@ -41,11 +38,11 @@ function SectionHeading({ icon: Icon, children }: { icon: typeof BookOpen; child
  */
 export function ChildFullReport({ child, viewerRole }: { child: ChildRecord; viewerRole: "teacher" | "parent" }) {
   const { user } = useAuth();
-  const { data, addParentNote } = useDashboardStore();
+  const { data, addParentNote, addParentNoteComment } = useDashboardStore();
   const [noteText, setNoteText] = useState("");
+  const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
 
   const reports = data.reportsByChild[child.id];
-  const diary = data.diaryByChild[child.id] ?? [];
   const notes = data.parentNotesByChild[child.id] ?? [];
   if (!reports) return null;
 
@@ -57,6 +54,13 @@ export function ChildFullReport({ child, viewerRole }: { child: ChildRecord; vie
     setNoteText("");
   }
 
+  function submitComment(noteId: string) {
+    const text = commentDrafts[noteId] ?? "";
+    if (!text.trim() || !user) return;
+    addParentNoteComment(child.id, noteId, getDisplayName(user), data.role, text);
+    setCommentDrafts((prev) => ({ ...prev, [noteId]: "" }));
+  }
+
   return (
     <div className="max-w-2xl pb-10">
       <div className="flex items-center gap-3 mb-2">
@@ -66,21 +70,6 @@ export function ChildFullReport({ child, viewerRole }: { child: ChildRecord; vie
           <p className="text-xs" style={{ color: "#A06080" }}>{child.className}</p>
         </div>
       </div>
-
-      <SectionHeading icon={BookOpen}>최근 일기</SectionHeading>
-      {diary.length === 0 ? (
-        <p className="text-sm" style={{ color: "#A06080" }}>아직 기록된 일기가 없어요.</p>
-      ) : (
-        <div className="space-y-2.5">
-          {diary.map((entry) => (
-            <div key={entry.id} className="rounded-2xl bg-card border p-4" style={{ borderColor: "rgba(232,121,160,0.15)" }}>
-              <p className="text-xs font-bold mb-1" style={{ color: "#A06080" }}>{formatDate(entry.date)}</p>
-              <p className="font-bold text-sm" style={{ color: "#3B1355" }}>{entry.title}</p>
-              <p className="text-xs leading-relaxed mt-1" style={{ color: "#6B3580" }}>{entry.summary}</p>
-            </div>
-          ))}
-        </div>
-      )}
 
       <SectionHeading icon={Sparkles}>AI 파트너 분석 & 팁</SectionHeading>
       <div className="rounded-2xl p-4" style={{ background: "linear-gradient(135deg,#FCE7F3,#EDE9FE)" }}>
@@ -109,6 +98,35 @@ export function ChildFullReport({ child, viewerRole }: { child: ChildRecord; vie
           <div key={note.id} className="rounded-2xl bg-card border p-4" style={{ borderColor: "rgba(232,121,160,0.15)" }}>
             <p className="text-xs font-bold mb-1" style={{ color: "#A06080" }}>{note.authorName} · {formatDateTime(note.createdAt)}</p>
             <p className="text-xs leading-relaxed" style={{ color: "#6B3580" }}>{note.text}</p>
+
+            {note.comments.length > 0 && (
+              <div className="mt-3 pt-3 space-y-2" style={{ borderTop: "1px solid rgba(232,121,160,0.12)" }}>
+                {note.comments.map((c) => (
+                  <div key={c.id}>
+                    <p className="text-[11px] font-bold" style={{ color: "#A06080" }}>{c.authorName} · {formatDateTime(c.createdAt)}</p>
+                    <p className="text-xs leading-relaxed" style={{ color: "#6B3580" }}>{c.text}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="flex items-center gap-1.5 mt-3">
+              <input
+                value={commentDrafts[note.id] ?? ""}
+                onChange={(e) => setCommentDrafts((prev) => ({ ...prev, [note.id]: e.target.value }))}
+                onKeyDown={(e) => e.key === "Enter" && !e.nativeEvent.isComposing && submitComment(note.id)}
+                placeholder="댓글을 남겨보세요"
+                className="flex-1 min-w-0 rounded-full px-3 py-1.5 text-xs outline-none"
+                style={{ background: "var(--input-background)", border: "1px solid rgba(232,121,160,0.2)" }}
+              />
+              <button
+                onClick={() => submitComment(note.id)}
+                className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 transition-transform active:scale-90"
+                style={{ background: "linear-gradient(135deg,#E879A0,#F472B6)" }}
+              >
+                <Send className="w-3 h-3 text-white" />
+              </button>
+            </div>
           </div>
         ))}
         {viewerRole === "teacher" && (
