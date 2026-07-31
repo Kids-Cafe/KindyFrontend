@@ -5,6 +5,8 @@
  * 초대받은 사람이 실제로 로그인했을 때(다른 브라우저 세션)도 찾을 수 있습니다.
  */
 
+import { newId } from "@/app/lib/id";
+
 export type InviteTargetRole = "teacher" | "parent" | "child";
 export type InviteStatus = "pending" | "accepted" | "rejected";
 
@@ -79,7 +81,7 @@ export function createInvite(payload: CreateInvitePayload): MembershipInvite {
   );
   if (existing) return existing;
 
-  const invite: MembershipInvite = { id: crypto.randomUUID(), status: "pending", createdAt: Date.now(), ...payload };
+  const invite: MembershipInvite = { id: newId(), status: "pending", createdAt: Date.now(), ...payload };
   writeInvites([...readInvites(), invite]);
   return invite;
 }

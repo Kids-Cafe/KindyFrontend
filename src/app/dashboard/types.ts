@@ -28,14 +28,16 @@ export type PermissionKey =
   | "manageClasses"
   | "manageMembers"
   | "manageSchedule"
-  | "manageSupplies";
+  | "manageSupplies"
+  | "managePhotos";
 
 export const PERMISSION_LABELS: Record<PermissionKey, string> = {
   manageNotices: "공지사항 관리",
   manageClasses: "반 관리",
   manageMembers: "멤버 및 권한 관리",
-  manageSchedule: "일정 등록",
+  manageSchedule: "일정 관리 (전체 반)",
   manageSupplies: "준비물 작성",
+  managePhotos: "사진첩 관리 (전체 반)",
 };
 
 /** 원장이 만들고 교사 계정에 배정하는 권한 묶음입니다. */
@@ -239,16 +241,22 @@ export interface ScheduleEvent {
   createdAt: number;
 }
 
-export type PhotoScope = "kindergarten";
+/** 사진첩은 반 단위로 나뉩니다. 원장은 모든 반을, 학부모/아이는 자기 반만 봅니다. */
+export type PhotoScope = "class";
+
+/** 사진 카드를 감싸는 장식 테마입니다. 업로더가 사진별로 지정합니다. */
+export type PhotoThemeId = "clip" | "polaroid" | "frame-wood" | "frame-gold";
 
 /** 사진첩 한 장입니다. data URL 또는 object URL을 그대로 저장합니다(목업이라 서버 업로드 없음). */
 export interface PhotoRecord {
   id: string;
   scope: PhotoScope;
+  /** scope가 "class"이므로 소속 반(classId)을 가리킵니다. */
   scopeId: string;
   url: string;
   caption?: string;
   uploadedBy: string;
+  theme: PhotoThemeId;
   /** epoch ms */
   takenAt: number;
 }

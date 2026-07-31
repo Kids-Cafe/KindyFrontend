@@ -14,7 +14,7 @@ export function buildClasses(kindergartenId: string): ClassRecord[] {
 /** 원장이 교사 계정에 배정하는 권한 역할입니다. */
 export function buildRoles(): RoleDef[] {
   return [
-    { id: "role-senior", name: "수석교사", color: "#E879A0", permissions: ["manageNotices", "manageSchedule", "manageSupplies"] },
+    { id: "role-senior", name: "수석교사", color: "#E879A0", permissions: ["manageNotices", "manageSchedule", "manageSupplies", "managePhotos"] },
     { id: "role-teacher", name: "담임교사", color: "#60A5FA", permissions: ["manageSchedule", "manageSupplies"] },
   ];
 }

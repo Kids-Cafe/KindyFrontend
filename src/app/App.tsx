@@ -107,7 +107,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="min-h-dvh bg-background text-foreground">
       <SplashIntro onDone={() => setSplashDone(true)} />
 
       {/* 전체 화면 모달들. 각자 별도 청크라 열릴 때 받아옵니다. */}

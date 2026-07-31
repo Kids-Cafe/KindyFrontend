@@ -7,6 +7,13 @@ import { getDisplayName } from "@/app/auth/getDisplayName";
 import { TimePickerButton } from "@/app/dashboard/features/TimePickerButton";
 import type { ScheduleEvent } from "@/app/dashboard/types";
 import { useConfirm } from "@/app/components/ConfirmDialog";
+import {
+  canBrowseAllClasses,
+  canManageClass,
+  canManageKindergartenWide,
+  getLockedClassId,
+  teacherHasPermission,
+} from "@/app/dashboard/classAccess";
 
 function formatDateLabel(dateStr: string): string {
   const [y, m, d] = dateStr.split("-").map(Number);
@@ -34,30 +41,34 @@ export function DayEventDialog({ dateStr, onClose }: { dateStr: string | null; o
 
   const isDirector = data.role === "director";
   const isTeacher = data.role === "teacher";
-  const canWrite = isDirector || isTeacher;
-  const myClassId = isTeacher ? data.teacher.classId : undefined;
+  const showAllClasses = canBrowseAllClasses(data);
+  const hasElevatedPermission = teacherHasPermission(data, "manageSchedule");
 
-  const viewerClassId =
-    data.role === "teacher" ? data.teacher.classId
-    : data.role === "parent" ? data.myChild?.classId
-    : data.role === "child" ? data.me?.classId
-    : undefined;
+  // 일반 선생님은 자기 반 일정만 등록할 수 있습니다("전체 반" 권한이 있으면 예외).
+  const composeClassId = isTeacher && !hasElevatedPermission ? data.teacher.classId || undefined : undefined;
+  const canWrite =
+    composeClassId === undefined
+      ? canManageKindergartenWide(data, "manageSchedule")
+      : canManageClass(data, composeClassId, "manageSchedule");
+
+  const viewerClassId = getLockedClassId(data) ?? (isTeacher ? data.teacher.classId : undefined);
 
   const dayEvents = dateStr
     ? data.scheduleEvents
         .filter((e) => e.date === dateStr)
-        .filter((e) => !e.classId || e.classId === viewerClassId || isDirector)
+        .filter((e) => !e.classId || e.classId === viewerClassId || showAllClasses)
         .sort((a, b) => (a.time ?? "").localeCompare(b.time ?? ""))
     : [];
 
+  /** 반 일정은 그 반 담당자만, 유치원 전체 일정은 원장(또는 전체 반 권한자)만 고칩니다. */
   function canEdit(e: ScheduleEvent): boolean {
-    if (isDirector) return true;
-    if (isTeacher) return e.classId === myClassId;
-    return false;
+    return e.classId
+      ? canManageClass(data, e.classId, "manageSchedule")
+      : canManageKindergartenWide(data, "manageSchedule");
   }
 
   function startNew() {
-    setForm({ title: "", time: "", classId: isTeacher ? myClassId : undefined });
+    setForm({ title: "", time: "", classId: composeClassId });
     setMode("new");
   }
 
@@ -68,7 +79,8 @@ export function DayEventDialog({ dateStr, onClose }: { dateStr: string | null; o
 
   function handleSave() {
     if (!dateStr || !form.title.trim() || !user) return;
-    const classId = isTeacher ? myClassId : form.classId;
+    // 일반 선생님은 폼에서 대상을 바꿀 수 없으므로 항상 자기 반으로 고정됩니다.
+    const classId = isTeacher && !hasElevatedPermission ? composeClassId : form.classId;
     if (mode === "new") {
       addScheduleEvent(form.title.trim(), dateStr, form.time || undefined, getDisplayName(user), classId);
     } else if (mode !== "list") {

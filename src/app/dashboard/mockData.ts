@@ -280,6 +280,8 @@ export function buildDashboardData(user: AuthUser, roleOverride?: DashboardData[
     }));
 
   const teachers: TeacherRecord[] = [...buildTeachers(kindergartenId, kindergartenName, teacher), ...acceptedTeacherInvites];
+  // 사진첩이 반 단위로 나뉘므로 반 목록을 먼저 만들어 두고 아래에서 함께 씁니다.
+  const classes = buildClasses(kindergartenId);
   const memberThreadsByTeacher: DashboardData["memberThreadsByTeacher"] = {};
   for (const t of teachers) {
     memberThreadsByTeacher[t.id] = buildMemberThread(t, directorName);
@@ -324,13 +326,13 @@ export function buildDashboardData(user: AuthUser, roleOverride?: DashboardData[
     aiThreadsByChild,
     memberThreadsByTeacher,
 
-    classes: buildClasses(kindergartenId),
+    classes,
     roles: buildRoles(),
     teachers,
     notices: buildNotices(kindergartenId, directorName),
     suppliesByClass: teacher.classId ? { [teacher.classId]: buildSupplies(teacher.classId, teacher.name) } : {},
     scheduleEvents: buildSchedule(kindergartenId, teacher.classId || undefined, teacher.name),
-    photos: buildPhotos(kindergartenId),
+    photos: buildPhotos(classes.map((c) => c.id)),
     parentNotesByChild,
     homeWidgets: defaultHomeWidgets,
   };
@@ -437,7 +439,7 @@ export function buildAltDashboardData(user: AuthUser): DashboardData {
     notices: buildNotices(kindergartenId, "박서연 원장"),
     suppliesByClass: { [classId]: buildSupplies(classId, teacher.name) },
     scheduleEvents: buildSchedule(kindergartenId, classId, teacher.name),
-    photos: buildPhotos(kindergartenId),
+    photos: buildPhotos([classId]),
     parentNotesByChild,
     homeWidgets: ["schedule", "photos"],
   };

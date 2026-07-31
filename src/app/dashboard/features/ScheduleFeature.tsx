@@ -9,6 +9,13 @@ import { DayEventDialog } from "@/app/dashboard/features/DayEventDialog";
 import { DatePickerButton } from "@/app/dashboard/features/DatePickerButton";
 import { TimePickerButton } from "@/app/dashboard/features/TimePickerButton";
 import { useConfirm } from "@/app/components/ConfirmDialog";
+import {
+  canBrowseAllClasses,
+  canManageClass,
+  canManageKindergartenWide,
+  getLockedClassId,
+  teacherHasPermission,
+} from "@/app/dashboard/classAccess";
 
 function daysUntil(dateStr: string): number {
   const today = new Date();
@@ -172,6 +179,9 @@ function EventRow({ event, canEdit }: { event: ScheduleEvent; canEdit: boolean }
 }
 
 /** 일정 목록입니다. 선생님/원장은 등록 폼을, 부모/아이는 읽기 전용 목록을 봅니다. */
+/** 반 탭 중 "유치원 전체"(반이 지정되지 않은 일정)를 가리키는 값입니다. */
+const WHOLE_KINDERGARTEN = "__whole__";
+
 export function ScheduleFeature() {
   const { user } = useAuth();
   const { data, addScheduleEvent } = useDashboardStore();
@@ -181,22 +191,60 @@ export function ScheduleFeature() {
   const [title, setTitle] = useState("");
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
-  const [targetClassId, setTargetClassId] = useState<string | undefined>(undefined);
 
   const canWrite = data.role === "teacher" || data.role === "director";
-  const classId = data.role === "teacher" ? data.teacher.classId : data.role === "parent" ? data.myChild?.classId : data.role === "child" ? data.me?.classId : undefined;
+  const lockedClassId = getLockedClassId(data);
+  const showClassTabs = canBrowseAllClasses(data);
+  const hasElevatedPermission = teacherHasPermission(data, "manageSchedule");
 
-  const events = data.scheduleEvents
-    .filter((e) => !e.classId || e.classId === classId || data.role === "director")
-    .sort((a, b) => a.date.localeCompare(b.date));
+  // 선생님은 자기 반 탭에서 시작합니다. 원장은 전체를 먼저 봅니다.
+  const [activeTab, setActiveTab] = useState<string>(
+    () => (data.role === "teacher" ? data.teacher.classId : "") || "all",
+  );
+
+  // 학부모/아이는 탭이 없으므로 항상 자기 반 + 유치원 전체만 봅니다.
+  const viewerClassId = lockedClassId ?? (data.role === "teacher" ? data.teacher.classId : undefined);
+
+  const events = useMemo(() => {
+    const visible = data.scheduleEvents.filter(
+      (e) => !e.classId || e.classId === viewerClassId || showClassTabs,
+    );
+    const filtered = !showClassTabs || activeTab === "all"
+      ? visible
+      : activeTab === WHOLE_KINDERGARTEN
+        // "유치원 전체" 탭은 반이 지정되지 않은 일정만 봅니다.
+        ? visible.filter((e) => !e.classId)
+        // 특정 반 탭은 그 반 일정과 함께, 그 반에도 해당되는 유치원 전체 일정을 같이 보여줍니다.
+        : visible.filter((e) => e.classId === activeTab || !e.classId);
+    return [...filtered].sort((a, b) => a.date.localeCompare(b.date));
+  }, [data.scheduleEvents, viewerClassId, showClassTabs, activeTab]);
+
+  /** 새 일정을 어느 반으로 등록할지. 지금 보고 있는 탭을 그대로 따릅니다. */
+  const composeClassId =
+    data.role === "teacher" && !hasElevatedPermission
+      ? data.teacher.classId || undefined // 일반 선생님은 항상 자기 반으로만 등록됩니다.
+      : activeTab === "all" || activeTab === WHOLE_KINDERGARTEN
+        ? undefined
+        : activeTab;
+
+  const composeTargetLabel =
+    composeClassId === undefined
+      ? "유치원 전체"
+      : (data.classes.find((c) => c.id === composeClassId)?.name ?? "우리 반");
+
+  // 지금 탭에 일정을 등록할 수 있는지. "전체"/"유치원 전체" 탭은 반 지정이 없는 일정입니다.
+  const canComposeHere =
+    canWrite &&
+    (composeClassId === undefined
+      ? canManageKindergartenWide(data, "manageSchedule")
+      : canManageClass(data, composeClassId, "manageSchedule"));
 
   function handleSubmit() {
     if (!title.trim() || !date || !user) return;
-    addScheduleEvent(title.trim(), date, time || undefined, getDisplayName(user), data.role === "director" ? targetClassId : classId);
+    addScheduleEvent(title.trim(), date, time || undefined, getDisplayName(user), composeClassId);
     setTitle("");
     setDate("");
     setTime("");
-    setTargetClassId(undefined);
     setComposing(false);
   }
 
@@ -223,7 +271,7 @@ export function ScheduleFeature() {
               </>
             )}
           </button>
-          {view === "list" && canWrite && !composing && (
+          {view === "list" && canComposeHere && !composing && (
             <button
               onClick={() => setComposing(true)}
               className="flex items-center gap-1 text-xs font-bold px-3 py-1.5 rounded-full text-white transition-transform active:scale-95"
@@ -235,7 +283,38 @@ export function ScheduleFeature() {
         </div>
       </div>
 
-      {view === "list" && canWrite && composing && (
+      {showClassTabs && data.classes.length > 0 && (
+        <div className="flex flex-wrap gap-2 mb-4" role="tablist" aria-label="반 선택">
+          {[
+            { id: "all", name: "전체" },
+            { id: WHOLE_KINDERGARTEN, name: "유치원 전체" },
+            ...data.classes,
+          ].map((c) => {
+            const active = activeTab === c.id;
+            return (
+              <button
+                key={c.id}
+                role="tab"
+                aria-selected={active}
+                onClick={() => {
+                  setActiveTab(c.id);
+                  setComposing(false); // 탭을 옮기면 등록 대상이 바뀌므로 작성 중이던 폼은 닫습니다.
+                }}
+                className="text-xs font-bold px-3 py-1.5 rounded-full transition-colors"
+                style={
+                  active
+                    ? { background: "linear-gradient(135deg,#E879A0,#F472B6)", color: "white" }
+                    : { background: "#F9FAFB", color: "#9CA3AF", border: "1px solid #F3F4F6" }
+                }
+              >
+                {c.name}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {view === "list" && canComposeHere && composing && (
         <div className="rounded-2xl bg-card border p-4 mb-4 space-y-2.5" style={{ borderColor: "rgba(232,121,160,0.2)" }}>
           <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="일정 제목"
             className="w-full rounded-xl px-3.5 py-2.5 text-sm font-bold outline-none"
@@ -248,23 +327,14 @@ export function ScheduleFeature() {
               <TimePickerButton value={time} onChange={setTime} />
             </div>
           </div>
-          {data.role === "director" ? (
-            <select
-              value={targetClassId ?? ""}
-              onChange={(e) => setTargetClassId(e.target.value || undefined)}
-              className="w-full rounded-xl px-3.5 py-2 text-xs outline-none"
-              style={{ background: "var(--input-background)", border: "1px solid rgba(232,121,160,0.2)", color: "#6B3580" }}
-            >
-              <option value="">유치원 전체 대상</option>
-              {data.classes.map((c) => (
-                <option key={c.id} value={c.id}>{c.name} 대상</option>
-              ))}
-            </select>
-          ) : (
-            <p className="text-xs" style={{ color: "#A06080" }}>{data.teacher.className} 반 일정으로 등록돼요.</p>
-          )}
+          {/* 등록 대상은 지금 보고 있는 탭을 그대로 따릅니다. 별도 선택기를 두면
+              탭에서 본 것과 다른 반에 등록되는 혼동이 생깁니다. */}
+          <p className="text-xs" style={{ color: "#A06080" }}>
+            <strong style={{ color: "#E879A0" }}>{composeTargetLabel}</strong> 일정으로 등록돼요.
+            {showClassTabs && " 대상을 바꾸려면 위 탭에서 반을 골라주세요."}
+          </p>
           <div className="flex justify-end gap-2">
-            <button onClick={() => { setComposing(false); setTargetClassId(undefined); }} className="text-xs font-bold px-3 py-2 rounded-full" style={{ color: "#A06080" }}>취소</button>
+            <button onClick={() => setComposing(false)} className="text-xs font-bold px-3 py-2 rounded-full" style={{ color: "#A06080" }}>취소</button>
             <button onClick={handleSubmit} className="text-xs font-bold px-4 py-2 rounded-full text-white transition-transform active:scale-95"
               style={{ background: "linear-gradient(135deg,#E879A0,#F472B6)" }}>등록</button>
           </div>
@@ -278,7 +348,12 @@ export function ScheduleFeature() {
             <EventRow
               key={e.id}
               event={e}
-              canEdit={data.role === "director" || (data.role === "teacher" && e.classId === classId)}
+              // 반 일정은 그 반 담당자만, 유치원 전체 일정은 원장(또는 전체 반 권한자)만 고칩니다.
+              canEdit={
+                e.classId
+                  ? canManageClass(data, e.classId, "manageSchedule")
+                  : canManageKindergartenWide(data, "manageSchedule")
+              }
             />
           ))}
         </div>

@@ -3,6 +3,7 @@ import { Backpack, Plus, MessageCircle } from "lucide-react";
 import { useDashboardStore } from "@/app/dashboard/DashboardStoreContext";
 import { useAuth } from "@/app/auth/AuthContext";
 import { getDisplayName } from "@/app/auth/getDisplayName";
+import { DatePickerButton } from "@/app/dashboard/features/DatePickerButton";
 
 function formatDate(ms: number): string {
   const d = new Date(ms);
@@ -116,9 +117,12 @@ export function SuppliesFeature() {
           <textarea value={body} onChange={(e) => setBody(e.target.value)} placeholder="준비물 내용을 입력하세요" rows={3}
             className="w-full rounded-xl px-3.5 py-2.5 text-sm outline-none resize-none"
             style={{ background: "var(--input-background)", border: "1px solid rgba(232,121,160,0.2)", color: "#3B1355" }} />
-          <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)}
-            className="rounded-xl px-3.5 py-2 text-xs outline-none"
-            style={{ background: "var(--input-background)", border: "1px solid rgba(232,121,160,0.2)", color: "#6B3580" }} />
+          {/* 네이티브 <input type="date">는 Safari·Firefox에서 전혀 다르게 그려지고,
+              iOS에서는 16px 미만 글꼴이면 포커스 시 화면이 강제로 확대됩니다.
+              일정 화면과 같은 커스텀 피커를 써서 어느 브라우저에서나 동일하게 보이게 합니다. */}
+          <div className="max-w-[220px]">
+            <DatePickerButton value={dueDate} onChange={setDueDate} />
+          </div>
           <div className="flex justify-end gap-2">
             <button onClick={() => setComposing(false)} className="text-xs font-bold px-3 py-2 rounded-full" style={{ color: "#A06080" }}>취소</button>
             <button onClick={handleSubmit} className="text-xs font-bold px-4 py-2 rounded-full text-white transition-transform active:scale-95"

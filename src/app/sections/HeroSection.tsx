@@ -29,7 +29,7 @@ export function HeroSection({ onOpenSignup }: { onOpenSignup: () => void }) {
   }, []);
 
   return (
-    <section className="relative min-h-screen flex items-center overflow-hidden pt-20"
+    <section className="relative min-h-dvh flex items-center overflow-hidden pt-20"
       style={{ background: "linear-gradient(160deg, #C8B8F0 0%, #E0C8F0 18%, #F4C8E0 40%, #FFD8EC 62%, #FFE8C8 100%)" }}>
 
       {/* 배경 구름 덩어리 */}

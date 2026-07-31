@@ -12,7 +12,9 @@ import type {
   FeatureId,
   KindergartenRecord,
   PermissionKey,
+  PhotoThemeId,
 } from "@/app/dashboard/types";
+import { newId } from "@/app/lib/id";
 
 /** 지금 로그인된 사람이 오갈 수 있는 "서버"(유치원) 단위 워크스페이스입니다. */
 export interface DashboardWorkspace {
@@ -108,8 +110,10 @@ interface DashboardStoreValue {
   updateScheduleEvent: (eventId: string, title: string, date: string, time: string | undefined, classId?: string) => void;
   deleteScheduleEvent: (eventId: string) => void;
 
-  /** 사진첩: 전 계정 공용. */
-  addPhoto: (url: string, uploadedBy: string, caption?: string) => void;
+  /** 사진첩: 반 단위로 나뉩니다. 등록·수정·삭제 권한은 화면(PhotoAlbumFeature)에서 판단합니다. */
+  addPhoto: (url: string, uploadedBy: string, classId: string, theme: PhotoThemeId, caption?: string) => void;
+  /** 사진 카드를 감싸는 장식 테마를 바꿉니다. */
+  updatePhotoTheme: (photoId: string, theme: PhotoThemeId) => void;
   deletePhoto: (photoId: string) => void;
 
   /** 선생님 전용: 특정 아이의 "부모 전용" 게시글 작성. */
@@ -221,7 +225,7 @@ export function DashboardStoreProvider({ children }: { children: ReactNode }) {
         },
       };
     });
-  }, []);
+  }, [setData]);
 
   const sendAiMessage = useCallback((childId: string, text: string) => {
     const trimmed = text.trim();
@@ -238,7 +242,7 @@ export function DashboardStoreProvider({ children }: { children: ReactNode }) {
             childId,
             messages: [
               ...thread.messages,
-              { id: crypto.randomUUID(), sender: "child", senderName: child?.nickname ?? "나", kind: "text", text: trimmed, time: Date.now() },
+              { id: newId(), sender: "child", senderName: child?.nickname ?? "나", kind: "text", text: trimmed, time: Date.now() },
             ],
           },
         },
@@ -261,7 +265,7 @@ export function DashboardStoreProvider({ children }: { children: ReactNode }) {
               childId,
               messages: [
                 ...thread.messages,
-                { id: crypto.randomUUID(), sender: "ai", senderName: partnerName, kind: "text", text: pickReply(partner, trimmed), time: Date.now() },
+                { id: newId(), sender: "ai", senderName: partnerName, kind: "text", text: pickReply(partner, trimmed), time: Date.now() },
               ],
             },
           },
@@ -269,7 +273,7 @@ export function DashboardStoreProvider({ children }: { children: ReactNode }) {
       });
       setAiTyping((prev) => ({ ...prev, [childId]: false }));
     }, 900 + Math.random() * 700);
-  }, []);
+  }, [setData]);
 
   const sendThreadMessage = useCallback((childId: string, sender: ChatSender, senderName: string, text: string) => {
     const trimmed = text.trim();
@@ -283,12 +287,12 @@ export function DashboardStoreProvider({ children }: { children: ReactNode }) {
           ...prev.threadsByChild,
           [childId]: {
             ...thread,
-            messages: [...thread.messages, { id: crypto.randomUUID(), sender, senderName, kind: "text", text: trimmed, time: Date.now() }],
+            messages: [...thread.messages, { id: newId(), sender, senderName, kind: "text", text: trimmed, time: Date.now() }],
           },
         },
       };
     });
-  }, []);
+  }, [setData]);
 
   const insertDataCard = useCallback((childId: string, sender: ChatSender, senderName: string, cardType: DataCardType) => {
     setData((prev) => {
@@ -300,72 +304,72 @@ export function DashboardStoreProvider({ children }: { children: ReactNode }) {
           ...prev.threadsByChild,
           [childId]: {
             ...thread,
-            messages: [...thread.messages, { id: crypto.randomUUID(), sender, senderName, kind: "data-card", cardType, time: Date.now() }],
+            messages: [...thread.messages, { id: newId(), sender, senderName, kind: "data-card", cardType, time: Date.now() }],
           },
         },
       };
     });
-  }, []);
+  }, [setData]);
 
   const addNotice = useCallback((title: string, body: string, authorName: string, bannerEnabled = false) => {
     setData((prev) => ({
       ...prev,
       notices: [
-        { id: crypto.randomUUID(), kindergartenId: prev.kindergarten.id, title, body, authorName, createdAt: Date.now(), pinned: false, bannerEnabled },
+        { id: newId(), kindergartenId: prev.kindergarten.id, title, body, authorName, createdAt: Date.now(), pinned: false, bannerEnabled },
         ...prev.notices,
       ],
     }));
-  }, []);
+  }, [setData]);
 
   const togglePinNotice = useCallback((noticeId: string) => {
     setData((prev) => ({
       ...prev,
       notices: prev.notices.map((n) => (n.id === noticeId ? { ...n, pinned: !n.pinned } : n)),
     }));
-  }, []);
+  }, [setData]);
 
   const toggleNoticeBanner = useCallback((noticeId: string) => {
     setData((prev) => ({
       ...prev,
       notices: prev.notices.map((n) => (n.id === noticeId ? { ...n, bannerEnabled: !n.bannerEnabled } : n)),
     }));
-  }, []);
+  }, [setData]);
 
   const deleteNotice = useCallback((noticeId: string) => {
     setData((prev) => ({ ...prev, notices: prev.notices.filter((n) => n.id !== noticeId) }));
-  }, []);
+  }, [setData]);
 
   const addClass = useCallback((name: string) => {
     setData((prev) => ({
       ...prev,
-      classes: [...prev.classes, { id: crypto.randomUUID(), name, kindergartenId: prev.kindergarten.id }],
+      classes: [...prev.classes, { id: newId(), name, kindergartenId: prev.kindergarten.id }],
     }));
-  }, []);
+  }, [setData]);
 
   const renameClass = useCallback((classId: string, name: string) => {
     setData((prev) => ({
       ...prev,
       classes: prev.classes.map((c) => (c.id === classId ? { ...c, name } : c)),
     }));
-  }, []);
+  }, [setData]);
 
   const deleteClass = useCallback((classId: string) => {
     setData((prev) => ({ ...prev, classes: prev.classes.filter((c) => c.id !== classId) }));
-  }, []);
+  }, [setData]);
 
   const createRole = useCallback((name: string, color: string) => {
     setData((prev) => ({
       ...prev,
-      roles: [...prev.roles, { id: crypto.randomUUID(), name, color, permissions: [] }],
+      roles: [...prev.roles, { id: newId(), name, color, permissions: [] }],
     }));
-  }, []);
+  }, [setData]);
 
   const updateRolePermissions = useCallback((roleId: string, permissions: PermissionKey[]) => {
     setData((prev) => ({
       ...prev,
       roles: prev.roles.map((r) => (r.id === roleId ? { ...r, permissions } : r)),
     }));
-  }, []);
+  }, [setData]);
 
   const deleteRole = useCallback((roleId: string) => {
     setData((prev) => ({
@@ -373,7 +377,7 @@ export function DashboardStoreProvider({ children }: { children: ReactNode }) {
       roles: prev.roles.filter((r) => r.id !== roleId),
       teachers: prev.teachers.map((t) => ({ ...t, roleIds: t.roleIds.filter((id) => id !== roleId) })),
     }));
-  }, []);
+  }, [setData]);
 
   const assignTeacherRole = useCallback((teacherId: string, roleId: string, assigned: boolean) => {
     setData((prev) => {
@@ -388,22 +392,22 @@ export function DashboardStoreProvider({ children }: { children: ReactNode }) {
       if (updated) updateAcceptedInviteRoles(prev.kindergarten.id, teacherId, updated.roleIds);
       return { ...prev, teachers: nextTeachers };
     });
-  }, []);
+  }, [setData]);
 
   const removeTeacherMembership = useCallback((teacherId: string) => {
     setData((prev) => {
       revokeAcceptedInvite(prev.kindergarten.id, teacherId);
       return { ...prev, teachers: prev.teachers.filter((t) => t.id !== teacherId) };
     });
-  }, []);
+  }, [setData]);
 
   const addSupplyItem = useCallback((classId: string, title: string, body: string, authorName: string, dueDate?: string) => {
     setData((prev) => {
       const list = prev.suppliesByClass[classId] ?? [];
-      const item = { id: crypto.randomUUID(), classId, title, body, authorName, createdAt: Date.now(), dueDate, comments: [] };
+      const item = { id: newId(), classId, title, body, authorName, createdAt: Date.now(), dueDate, comments: [] };
       return { ...prev, suppliesByClass: { ...prev.suppliesByClass, [classId]: [item, ...list] } };
     });
-  }, []);
+  }, [setData]);
 
   const addSupplyComment = useCallback((classId: string, supplyId: string, authorName: string, authorRole: DashboardData["role"], text: string) => {
     const trimmed = text.trim();
@@ -417,44 +421,51 @@ export function DashboardStoreProvider({ children }: { children: ReactNode }) {
           [classId]: list.map((item) =>
             item.id !== supplyId
               ? item
-              : { ...item, comments: [...item.comments, { id: crypto.randomUUID(), authorName, authorRole, text: trimmed, createdAt: Date.now() }] },
+              : { ...item, comments: [...item.comments, { id: newId(), authorName, authorRole, text: trimmed, createdAt: Date.now() }] },
           ),
         },
       };
     });
-  }, []);
+  }, [setData]);
 
   const addScheduleEvent = useCallback((title: string, date: string, time: string | undefined, createdBy: string, classId?: string) => {
     setData((prev) => ({
       ...prev,
       scheduleEvents: [
-        { id: crypto.randomUUID(), kindergartenId: prev.kindergarten.id, classId, title, date, time, createdBy, createdAt: Date.now() },
+        { id: newId(), kindergartenId: prev.kindergarten.id, classId, title, date, time, createdBy, createdAt: Date.now() },
         ...prev.scheduleEvents,
       ],
     }));
-  }, []);
+  }, [setData]);
 
   const updateScheduleEvent = useCallback((eventId: string, title: string, date: string, time: string | undefined, classId?: string) => {
     setData((prev) => ({
       ...prev,
       scheduleEvents: prev.scheduleEvents.map((e) => (e.id === eventId ? { ...e, title, date, time, classId } : e)),
     }));
-  }, []);
+  }, [setData]);
 
   const deleteScheduleEvent = useCallback((eventId: string) => {
     setData((prev) => ({ ...prev, scheduleEvents: prev.scheduleEvents.filter((e) => e.id !== eventId) }));
-  }, []);
+  }, [setData]);
 
-  const addPhoto = useCallback((url: string, uploadedBy: string, caption?: string) => {
+  const addPhoto = useCallback((url: string, uploadedBy: string, classId: string, theme: PhotoThemeId, caption?: string) => {
     setData((prev) => ({
       ...prev,
-      photos: [{ id: crypto.randomUUID(), scope: "kindergarten", scopeId: prev.kindergarten.id, url, caption, uploadedBy, takenAt: Date.now() }, ...prev.photos],
+      photos: [{ id: newId(), scope: "class", scopeId: classId, url, caption, uploadedBy, theme, takenAt: Date.now() }, ...prev.photos],
     }));
-  }, []);
+  }, [setData]);
+
+  const updatePhotoTheme = useCallback((photoId: string, theme: PhotoThemeId) => {
+    setData((prev) => ({
+      ...prev,
+      photos: prev.photos.map((p) => (p.id === photoId ? { ...p, theme } : p)),
+    }));
+  }, [setData]);
 
   const deletePhoto = useCallback((photoId: string) => {
     setData((prev) => ({ ...prev, photos: prev.photos.filter((p) => p.id !== photoId) }));
-  }, []);
+  }, [setData]);
 
   const addParentNote = useCallback((childId: string, authorName: string, text: string) => {
     const trimmed = text.trim();
@@ -465,11 +476,11 @@ export function DashboardStoreProvider({ children }: { children: ReactNode }) {
         ...prev,
         parentNotesByChild: {
           ...prev.parentNotesByChild,
-          [childId]: [{ id: crypto.randomUUID(), childId, authorName, text: trimmed, createdAt: Date.now(), comments: [] }, ...list],
+          [childId]: [{ id: newId(), childId, authorName, text: trimmed, createdAt: Date.now(), comments: [] }, ...list],
         },
       };
     });
-  }, []);
+  }, [setData]);
 
   const addParentNoteComment = useCallback(
     (childId: string, noteId: string, authorName: string, authorRole: DashboardData["role"], text: string) => {
@@ -484,13 +495,13 @@ export function DashboardStoreProvider({ children }: { children: ReactNode }) {
             [childId]: list.map((note) =>
               note.id !== noteId
                 ? note
-                : { ...note, comments: [...note.comments, { id: crypto.randomUUID(), authorName, authorRole, text: trimmed, createdAt: Date.now() }] },
+                : { ...note, comments: [...note.comments, { id: newId(), authorName, authorRole, text: trimmed, createdAt: Date.now() }] },
             ),
           },
         };
       });
     },
-    [],
+    [setData],
   );
 
   const updateChildNickname = useCallback((childId: string, nickname: string) => {
@@ -503,7 +514,7 @@ export function DashboardStoreProvider({ children }: { children: ReactNode }) {
       classChildren: prev.classChildren.map((c) => (c.id === childId ? { ...c, nickname: trimmed } : c)),
       myClassChildren: prev.myClassChildren?.map((c) => (c.id === childId ? { ...c, nickname: trimmed } : c)),
     }));
-  }, []);
+  }, [setData]);
 
   const updateTeacherNickname = useCallback((teacherId: string, nickname: string) => {
     const trimmed = nickname.trim();
@@ -512,7 +523,7 @@ export function DashboardStoreProvider({ children }: { children: ReactNode }) {
       teacher: prev.teacher.id === teacherId ? { ...prev.teacher, nickname: trimmed || undefined } : prev.teacher,
       teachers: prev.teachers.map((t) => (t.id === teacherId ? { ...t, nickname: trimmed || undefined } : t)),
     }));
-  }, []);
+  }, [setData]);
 
   const sendMemberMessage = useCallback((teacherId: string, senderRole: ChatSender, senderName: string, text: string) => {
     const trimmed = text.trim();
@@ -526,20 +537,20 @@ export function DashboardStoreProvider({ children }: { children: ReactNode }) {
           ...prev.memberThreadsByTeacher,
           [teacherId]: {
             ...thread,
-            messages: [...thread.messages, { id: crypto.randomUUID(), sender: senderRole, senderName, kind: "text", text: trimmed, time: Date.now() }],
+            messages: [...thread.messages, { id: newId(), sender: senderRole, senderName, kind: "text", text: trimmed, time: Date.now() }],
           },
         },
       };
     });
-  }, []);
+  }, [setData]);
 
   const addHomeWidget = useCallback((id: FeatureId) => {
     setData((prev) => (prev.homeWidgets.includes(id) ? prev : { ...prev, homeWidgets: [...prev.homeWidgets, id] }));
-  }, []);
+  }, [setData]);
 
   const removeHomeWidget = useCallback((id: FeatureId) => {
     setData((prev) => ({ ...prev, homeWidgets: prev.homeWidgets.filter((w) => w !== id) }));
-  }, []);
+  }, [setData]);
 
   const value = useMemo<DashboardStoreValue>(
     () => ({
@@ -570,6 +581,7 @@ export function DashboardStoreProvider({ children }: { children: ReactNode }) {
       updateScheduleEvent,
       deleteScheduleEvent,
       addPhoto,
+      updatePhotoTheme,
       deletePhoto,
       addParentNote,
       addParentNoteComment,
@@ -607,6 +619,7 @@ export function DashboardStoreProvider({ children }: { children: ReactNode }) {
       updateScheduleEvent,
       deleteScheduleEvent,
       addPhoto,
+      updatePhotoTheme,
       deletePhoto,
       addParentNote,
       addParentNoteComment,

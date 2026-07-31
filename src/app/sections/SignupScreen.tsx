@@ -17,6 +17,7 @@ import { SESSION_TTL_MS } from "@/app/auth/storage";
 import { openAddressSearch } from "@/app/auth/addressSearch";
 import type { StudentGender } from "@/app/auth/types";
 import { useLeaveConfirmation } from "@/app/hooks/useLeaveConfirmation";
+import { newId } from "@/app/lib/id";
 
 interface FormState {
   name: string;
@@ -243,7 +244,7 @@ export function SignupScreen({
       addressDetail: form.addressDetail.trim(),
       accountType: "adult",
     });
-    setSession({ user, accessToken: crypto.randomUUID(), expiresAt: Date.now() + SESSION_TTL_MS });
+    setSession({ user, accessToken: newId(), expiresAt: Date.now() + SESSION_TTL_MS });
     onSignedUp();
   }
 
@@ -260,7 +261,7 @@ export function SignupScreen({
       guardianName: guardianName.trim(),
       guardianPhone: guardianPhone.trim(),
     });
-    setSession({ user, accessToken: crypto.randomUUID(), expiresAt: Date.now() + SESSION_TTL_MS });
+    setSession({ user, accessToken: newId(), expiresAt: Date.now() + SESSION_TTL_MS });
     onSignedUp();
   }
 

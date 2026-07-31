@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { X } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Volume2, X } from "lucide-react";
 import { KioSVG, KinaSVG } from "@/app/components/decorative";
 import { useDashboardStore } from "@/app/dashboard/DashboardStoreContext";
 import { loadChildVoiceSettings } from "@/app/dashboard/childVoiceSettings";
@@ -34,16 +34,29 @@ export function ChildScheduleAnnouncer({ childId, userId, partner }: { childId: 
     })
     .sort((a, b) => daysUntil(a.date) - daysUntil(b.date))[0];
 
-  useEffect(() => {
-    if (!upcoming) return;
+  const canSpeak = typeof window !== "undefined" && "speechSynthesis" in window;
+
+  const speak = useCallback(() => {
+    if (!upcoming || !canSpeak) return false;
     const settings = loadChildVoiceSettings(userId);
-    if (!settings.enabled || typeof window === "undefined" || !window.speechSynthesis) return;
+    if (!settings.enabled) return false;
+
     const text = `${daysUntil(upcoming.date) === 0 ? "오늘은" : `${daysUntil(upcoming.date)}일 뒤에`} ${upcoming.title} 일정이 있어요!`;
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = "ko-KR";
     utterance.volume = settings.volume;
+    window.speechSynthesis.cancel(); // 앞서 읽던 게 남아 있으면 겹칩니다.
     window.speechSynthesis.speak(utterance);
-    return () => window.speechSynthesis.cancel();
+    return true;
+  }, [upcoming, canSpeak, userId]);
+
+  // 자동 재생 시도입니다. iOS Safari는 사용자 조작 없이 호출한 speak()를 조용히 무시하므로
+  // 여기서 소리가 나지 않을 수 있습니다. 그래서 아래에 직접 누를 수 있는 버튼을 함께 둡니다.
+  useEffect(() => {
+    speak();
+    return () => {
+      if (canSpeak) window.speechSynthesis.cancel();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [upcoming?.id, userId]);
 
@@ -60,6 +73,16 @@ export function ChildScheduleAnnouncer({ childId, userId, partner }: { childId: 
         </p>
         <p className="text-xs mt-1" style={{ color: "#A06080" }}>{formatDate(upcoming.date)}{upcoming.time ? ` · ${upcoming.time}` : ""}</p>
       </div>
+      {canSpeak && (
+        <button
+          onClick={speak}
+          aria-label="일정 다시 듣기"
+          title="다시 듣기"
+          className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 transition-colors hover:bg-black/[0.05]"
+        >
+          <Volume2 className="w-4 h-4" style={{ color: "#A06080" }} />
+        </button>
+      )}
       <button onClick={() => setDismissed(true)} aria-label="알림 닫기" className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 transition-colors hover:bg-black/[0.05]">
         <X className="w-4 h-4" style={{ color: "#A06080" }} />
       </button>

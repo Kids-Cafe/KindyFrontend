@@ -35,6 +35,11 @@ export default defineConfig({
   assetsInclude: ['**/*.svg', '**/*.csv'],
 
   build: {
+    // Tailwind v4가 @property / color-mix() / oklch()를 쓰기 때문에 CSS 쪽 하한이
+    // Safari 16.4 · Chrome 111 · Firefox 128입니다. 이걸 명시하지 않으면 Vite 기본값
+    // (Safari 16 등)으로 JS만 낮춰 내보내서, 실제로는 못 쓰는 브라우저를 지원하는 것처럼
+    // 보이게 됩니다. 둘의 기준을 맞춰 둡니다.
+    target: ["chrome111", "edge111", "firefox128", "safari16.4"],
     rollupOptions: {
       output: {
         // 자주 안 바뀌는 라이브러리를 앱 코드와 분리해 두면, 앱을 배포해도

@@ -4,6 +4,7 @@ import { beginSocialLogin } from "@/app/auth/oauth";
 import { loginMockUser, updateMockUser } from "@/app/auth/mockSignup";
 import { SESSION_TTL_MS, clearSession, loadSession, saveSession } from "@/app/auth/storage";
 import type { AuthSession, AuthUser, SocialProviderId } from "@/app/auth/types";
+import { newId } from "@/app/lib/id";
 
 interface AuthContextValue {
   /** 로그인한 사용자. 비로그인 상태면 null */
@@ -93,7 +94,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         );
         return false;
       }
-      setSession({ user: result.user, accessToken: crypto.randomUUID(), expiresAt: Date.now() + SESSION_TTL_MS });
+      setSession({ user: result.user, accessToken: newId(), expiresAt: Date.now() + SESSION_TTL_MS });
       return true;
     } catch (cause) {
       console.error("[Kindy] 로그인 처리 실패", cause);

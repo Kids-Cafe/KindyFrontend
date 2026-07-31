@@ -7,6 +7,7 @@ import type {
   TeacherRole,
   UserRole,
 } from "@/app/auth/types";
+import { newId } from "@/app/lib/id";
 
 /**
  * 백엔드가 붙기 전까지 회원가입/유치원 등록을 흉내 내는 mock 저장소입니다.
@@ -163,7 +164,7 @@ export interface SignupPayload {
 
 /** mock 계정을 만들어 AuthUser로 돌려줍니다. 세션 반영은 호출부(AuthContext.setSession)에서 합니다. */
 export async function registerMockUser(payload: SignupPayload): Promise<AuthUser> {
-  const id = crypto.randomUUID();
+  const id = newId();
   const joinedAt = new Date().toISOString();
 
   const record: MockUserRecord = {
@@ -309,7 +310,7 @@ export interface KindergartenRegisterPayload {
 
 export function registerKindergarten(payload: KindergartenRegisterPayload): KindergartenInfo {
   const info: KindergartenInfo = {
-    id: crypto.randomUUID(),
+    id: newId(),
     name: payload.name,
     zonecode: payload.zonecode,
     address: payload.address,
