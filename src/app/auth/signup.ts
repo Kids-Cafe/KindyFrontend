@@ -1,6 +1,5 @@
 import type {AuthUser} from "@/app/auth/types.ts";
 import {SignupPayload} from "@/app/auth/mockSignup.ts";
-import {newId} from "@/app/lib/id.ts";
 
 export async function registerUser(payload: SignupPayload): Promise<AuthUser> {
     const joinedAt = new Date().toISOString();
@@ -28,8 +27,31 @@ export async function registerUser(payload: SignupPayload): Promise<AuthUser> {
 
     console.log(JSON.stringify(r));
 
+    if (r.status !== 'success') {
+        return {
+            id: "",
+            name: payload.name,
+            loginId: payload.loginId,
+            email: payload.email,
+            provider: "email",
+            joinedAt
+        };
+    }
+
+    const lp = new URLSearchParams();
+    lp.set("id", payload.loginId);
+    lp.set("password", payload.password);
+    await fetch('/api/user/login', {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/x-www-form-urlencoded"
+        },
+        credentials: 'include',
+        body: lp
+    });
+
     return {
-        id: r.status == 'success' ? newId() : "",
+        id: payload.loginId,
         name: payload.name,
         loginId: payload.loginId,
         email: payload.email,

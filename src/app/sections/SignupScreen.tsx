@@ -12,7 +12,7 @@ import {
   isValidBirthDate,
   isMockVerificationCodeValid,
 } from "@/app/auth/validation";
-import { isEmailTaken, isLoginIdTaken, registerMockUser } from "@/app/auth/mockSignup";
+import { registerMockUser } from "@/app/auth/mockSignup";
 import { SESSION_TTL_MS } from "@/app/auth/storage";
 import { openAddressSearch } from "@/app/auth/addressSearch";
 import type { StudentGender } from "@/app/auth/types";
@@ -228,7 +228,6 @@ export function SignupScreen({
     if (!isValidLoginId(form.loginId)) next.loginId = "4~20자의 영문/숫자, -, _ 만 사용할 수 있어요";
     else if (loginIdStatus !== "available") next.loginId = "아이디 중복확인을 먼저 해주세요";
     if (!isValidEmail(form.email)) next.email = "올바른 이메일 주소를 입력해주세요";
-    else if (isEmailTaken(form.email)) next.email = "이미 가입된 이메일이에요";
     else if (!emailVerification.verified) next.email = "이메일 인증을 완료해주세요";
     if (!isPasswordValid(form.password)) next.password = "8자 이상, 영문/숫자/특수문자 중 2가지 이상 조합해주세요";
     else if (form.password !== form.passwordConfirm) next.passwordConfirm = "비밀번호가 일치하지 않아요";
