@@ -30,6 +30,13 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  server: {
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8080',
+      }
+    }
+  },
 
   // 원시 import를 지원할 파일 형식입니다. 여기에 .css, .tsx, .ts 파일은 절대 추가하지 마세요.
   assetsInclude: ['**/*.svg', '**/*.csv'],

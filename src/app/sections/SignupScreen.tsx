@@ -18,6 +18,7 @@ import { openAddressSearch } from "@/app/auth/addressSearch";
 import type { StudentGender } from "@/app/auth/types";
 import { useLeaveConfirmation } from "@/app/hooks/useLeaveConfirmation";
 import { newId } from "@/app/lib/id";
+import {registerUser} from "@/app/auth/signup.ts";
 
 interface FormState {
   name: string;
@@ -147,13 +148,17 @@ export function SignupScreen({
       setErrors((prev) => ({ ...prev, loginId: "4~20자의 영문/숫자, -, _ 만 사용할 수 있어요" }));
       return;
     }
-    if (isLoginIdTaken(form.loginId)) {
-      setLoginIdStatus("taken");
-      setErrors((prev) => ({ ...prev, loginId: "이미 사용 중인 아이디예요" }));
-    } else {
-      setLoginIdStatus("available");
-      setErrors((prev) => ({ ...prev, loginId: undefined }));
-    }
+    fetch('/api/user/getIdExists?id=' + form.loginId, {
+      method: "GET"
+    }).then(r => r.json()).then(r => {
+      if (r.data?.exists) {
+        setLoginIdStatus("taken");
+        setErrors((prev) => ({ ...prev, loginId: "이미 사용 중인 아이디예요" }));
+      } else {
+        setLoginIdStatus("available");
+        setErrors((prev) => ({ ...prev, loginId: undefined }));
+      }
+    })
   }
 
   function handleSendEmailVerification() {
@@ -161,12 +166,16 @@ export function SignupScreen({
       setErrors((prev) => ({ ...prev, email: "올바른 이메일 주소를 입력해주세요" }));
       return;
     }
-    if (isEmailTaken(form.email)) {
-      setErrors((prev) => ({ ...prev, email: "이미 가입된 이메일이에요" }));
-      return;
-    }
-    setErrors((prev) => ({ ...prev, email: undefined }));
-    setEmailVerification({ sent: true, code: "", verified: false });
+    fetch('/api/user/getVerificationEmail?email=' + form.email, {
+      method: "GET"
+    }).then(r => r.json()).then(r => {
+      if (r.code == "EMAIL_EXISTS") {
+        setErrors((prev) => ({ ...prev, email: "이미 가입된 이메일이에요" }));
+      } else {
+        setErrors((prev) => ({ ...prev, email: undefined }));
+        setEmailVerification({ sent: true, code: "", verified: false });
+      }
+    })
   }
 
   function handleConfirmEmailVerification() {
@@ -174,8 +183,24 @@ export function SignupScreen({
       setErrors((prev) => ({ ...prev, email: "인증번호 6자리를 입력해주세요" }));
       return;
     }
-    setErrors((prev) => ({ ...prev, email: undefined }));
-    setEmailVerification((prev) => ({ ...prev, verified: true }));
+    const p = new URLSearchParams();
+    p.set("email", form.email);
+    p.set("code", emailVerification.code);
+    fetch('/api/user/verifyEmail', {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      credentials: "include",
+      body: p
+    }).then(r => r.json()).then(r => {
+      if (r.code == "VERIFICATION_COMPLETE") {
+        setErrors((prev) => ({ ...prev, email: undefined }));
+        setEmailVerification((prev) => ({ ...prev, verified: true }));
+      } else {
+        setErrors((prev) => ({ ...prev, email: "인증번호가 일치하지 않습니다" }));
+      }
+    })
   }
 
   function handleCheckChildLoginId() {
@@ -184,13 +209,17 @@ export function SignupScreen({
       setChildErrors((prev) => ({ ...prev, loginId: "4~20자의 영문/숫자, -, _ 만 사용할 수 있어요" }));
       return;
     }
-    if (isLoginIdTaken(childForm.loginId)) {
-      setChildLoginIdStatus("taken");
-      setChildErrors((prev) => ({ ...prev, loginId: "이미 사용 중인 아이디예요" }));
-    } else {
-      setChildLoginIdStatus("available");
-      setChildErrors((prev) => ({ ...prev, loginId: undefined }));
-    }
+    fetch('/api/user/getIdExists?id=' + childForm.loginId, {
+      method: "GET"
+    }).then(r => r.json()).then(r => {
+      if (r.data?.exists) {
+        setChildLoginIdStatus("taken");
+        setChildErrors((prev) => ({ ...prev, loginId: "이미 사용 중인 아이디예요" }));
+      } else {
+        setChildLoginIdStatus("available");
+        setChildErrors((prev) => ({ ...prev, loginId: undefined }));
+      }
+    })
   }
 
   function validate(): FieldErrors {
@@ -233,7 +262,7 @@ export function SignupScreen({
   }
 
   async function completeSignup() {
-    const user = await registerMockUser({
+    const user = await registerUser({
       name: form.name.trim(),
       loginId: form.loginId.trim(),
       email: form.email.trim(),
@@ -244,6 +273,10 @@ export function SignupScreen({
       addressDetail: form.addressDetail.trim(),
       accountType: "adult",
     });
+    if (user.id == "") {
+      window.alert("회원가입에 실패했습니다.");
+      return;
+    }
     setSession({ user, accessToken: newId(), expiresAt: Date.now() + SESSION_TTL_MS });
     onSignedUp();
   }

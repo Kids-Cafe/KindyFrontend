@@ -84,17 +84,56 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setError(null);
     setIsSubmittingPassword(true);
     try {
-      const result = await loginMockUser(loginId, password);
-      if (!result.ok) {
+      const p = new URLSearchParams();
+      p.set("id", loginId);
+      p.set("password", password);
+      const f = await fetch('/api/user/login', {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        credentials: 'include',
+        body: p
+      });
+      const r = await f.json();
+      if (r.status != "success") {
         setError(
-          result.reason === "crypto-unavailable"
-            ? "보안 연결(HTTPS)에서만 로그인할 수 있어요. 주소를 확인해주세요."
-            : // 아이디 존재 여부가 드러나지 않도록 나머지는 같은 문구를 보여줍니다.
-              "아이디 또는 비밀번호가 올바르지 않아요.",
+            r.code === "crypto-unavailable"
+                ? "보안 연결(HTTPS)에서만 로그인할 수 있어요. 주소를 확인해주세요."
+                : // 아이디 존재 여부가 드러나지 않도록 나머지는 같은 문구를 보여줍니다.
+                "아이디 또는 비밀번호가 올바르지 않아요.",
         );
         return false;
       }
-      setSession({ user: result.user, accessToken: newId(), expiresAt: Date.now() + SESSION_TTL_MS });
+
+      const q = await fetch('/api/user/info', {
+        method: "GET",
+        credentials: 'include'
+      });
+
+      const t = await q.json();
+
+      if (t.status != "success" || !t.data) return false;
+
+      const user: AuthUser = {
+        id: t.data.id,
+        name: t.data.name,
+        loginId: t.data.id ?? t.data.email,
+        email: t.data.email,
+        provider: "email",
+        joinedAt: t.data.createdAt,
+        // accountType: record.accountType,
+        // birthDate: record.birthDate,
+        // gender: record.gender,
+        // guardianName: record.guardianName,
+        // guardianPhone: record.guardianPhone,
+        // nickname: record.nickname,
+        // role: record.role,
+        // teacherRole: record.teacherRole,
+        // kindergarten: record.kindergarten,
+        // onboardingCompleted: record.onboardingCompleted
+      };
+      setSession({ user: user, accessToken: newId(), expiresAt: Date.now() + SESSION_TTL_MS });
       return true;
     } catch (cause) {
       console.error("[Kindy] 로그인 처리 실패", cause);
@@ -106,6 +145,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [setSession]);
 
   const updateProfile = useCallback((partial: Partial<AuthUser>) => {
+    console.log(partial);
     setSessionState((prev) => {
       if (!prev) return prev;
       const next: AuthSession = { ...prev, user: { ...prev.user, ...partial } };
@@ -120,6 +160,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(() => {
+    fetch('/api/user/logout', {
+      method: "POST",
+      credentials: 'include'
+    });
     clearSession();
     setSessionState(null);
     setError(null);
