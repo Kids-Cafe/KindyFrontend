@@ -21,7 +21,7 @@ function formatDateLabel(dateStr: string): string {
   return `${y}년 ${m}월 ${d}일 (${weekday})`;
 }
 
-const EMPTY_FORM = { title: "", time: "", classId: undefined as string | undefined };
+const EMPTY_FORM = { title: "", time: "", classId: undefined as number | undefined };
 
 /**
  * 달력 칸을 클릭했을 때 뜨는 팝업입니다. 해당 날짜의 일정을 보여주고, 원장/선생님(`canWrite`)은
@@ -31,7 +31,8 @@ export function DayEventDialog({ dateStr, onClose }: { dateStr: string | null; o
   const { user } = useAuth();
   const { data, addScheduleEvent, updateScheduleEvent, deleteScheduleEvent } = useDashboardStore();
   const { ask, dialog } = useConfirm();
-  const [mode, setMode] = useState<"list" | "new" | string>("list");
+  // "list"/"new" are the two form states; any other value is the id of the event being edited.
+  const [mode, setMode] = useState<"list" | "new" | number>("list");
   const [form, setForm] = useState(EMPTY_FORM);
 
   useEffect(() => {
@@ -83,7 +84,7 @@ export function DayEventDialog({ dateStr, onClose }: { dateStr: string | null; o
     const classId = isTeacher && !hasElevatedPermission ? composeClassId : form.classId;
     if (mode === "new") {
       addScheduleEvent(form.title.trim(), dateStr, form.time || undefined, getDisplayName(user), classId);
-    } else if (mode !== "list") {
+    } else if (typeof mode === "number") {
       updateScheduleEvent(mode, form.title.trim(), dateStr, form.time || undefined, classId);
     }
     setMode("list");
@@ -171,7 +172,7 @@ export function DayEventDialog({ dateStr, onClose }: { dateStr: string | null; o
               {isDirector && (
                 <select
                   value={form.classId ?? ""}
-                  onChange={(e) => setForm((f) => ({ ...f, classId: e.target.value || undefined }))}
+                  onChange={(e) => setForm((f) => ({ ...f, classId: e.target.value ? Number(e.target.value) : undefined }))}
                   className="w-full rounded-xl px-3.5 py-2 text-xs outline-none"
                   style={{ background: "var(--input-background)", border: "1px solid rgba(232,121,160,0.2)", color: "#6B3580" }}
                 >

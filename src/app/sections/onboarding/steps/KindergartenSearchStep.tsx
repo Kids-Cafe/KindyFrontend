@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { searchKindergartens } from "@/app/auth/mockSignup";
+import { searchKindergartens } from "@/app/auth/kindergartenSearch";
 import type { KindergartenInfo } from "@/app/auth/types";
 
 const inputStyle = { height: 54, border: "1.5px solid #E5E7EB", background: "#FAFAFA", color: "#1F0A3C" } as const;

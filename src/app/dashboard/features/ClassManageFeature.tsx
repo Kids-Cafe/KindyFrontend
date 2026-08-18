@@ -9,14 +9,14 @@ export function ClassManageFeature() {
   const { ask, dialog } = useConfirm();
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [editingName, setEditingName] = useState("");
 
-  function countChildren(classId: string): number {
+  function countChildren(classId: number): number {
     return data.classChildren.filter((c) => c.classId === classId).length;
   }
 
-  function startEdit(classId: string, current: string) {
+  function startEdit(classId: number, current: string) {
     setEditingId(classId);
     setEditingName(current);
   }

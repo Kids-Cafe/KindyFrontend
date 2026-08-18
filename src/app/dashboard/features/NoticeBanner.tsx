@@ -8,7 +8,7 @@ import { useDashboardStore } from "@/app/dashboard/DashboardStoreContext";
  */
 export function NoticeBanner() {
   const { data } = useDashboardStore();
-  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+  const [dismissed, setDismissed] = useState<Set<number>>(new Set());
 
   const bannered = useMemo(
     () => data.notices.filter((n) => n.bannerEnabled).sort((a, b) => b.createdAt - a.createdAt),

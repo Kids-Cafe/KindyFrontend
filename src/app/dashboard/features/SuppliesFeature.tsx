@@ -10,7 +10,7 @@ function formatDate(ms: number): string {
   return `${d.getMonth() + 1}월 ${d.getDate()}일`;
 }
 
-function CommentBox({ classId, supplyId }: { classId: string; supplyId: string }) {
+function CommentBox({ classId, supplyId }: { classId: number; supplyId: number }) {
   const { user } = useAuth();
   const { data, addSupplyComment } = useDashboardStore();
   const [text, setText] = useState("");
@@ -63,10 +63,11 @@ export function SuppliesFeature() {
     : classId;
 
   const activeClassName = data.classes.find((c) => c.id === activeClassId)?.name ?? data.teacher.className;
-  const items = data.suppliesByClass[activeClassId] ?? [];
+  // 아직 어떤 반에도 속하지 않은 계정(반 배정 전 교사 등)은 보여줄 준비물이 없습니다.
+  const items = activeClassId === undefined ? [] : data.suppliesByClass[activeClassId] ?? [];
 
   function handleSubmit() {
-    if (!title.trim() || !body.trim() || !user) return;
+    if (!title.trim() || !body.trim() || !user || activeClassId === undefined) return;
     addSupplyItem(activeClassId, title.trim(), body.trim(), getDisplayName(user), dueDate || undefined);
     setTitle("");
     setBody("");
@@ -153,7 +154,7 @@ export function SuppliesFeature() {
               </div>
             )}
 
-            {canComment && <CommentBox classId={activeClassId} supplyId={item.id} />}
+            {canComment && activeClassId !== undefined && <CommentBox classId={activeClassId} supplyId={item.id} />}
           </div>
         ))}
       </div>

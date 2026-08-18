@@ -4,11 +4,12 @@ import {
   ArrowLeft, UserCircle, KeyRound, MapPin, School, UserX, Phone, Link2,
 } from "lucide-react";
 import { useAuth } from "@/app/auth/AuthContext";
-import { changeMockPassword, loginMockUser, searchKindergartens } from "@/app/auth/mockSignup";
+import { changePassword, verifyCurrentPassword } from "@/app/auth/password";
+import { requestJoinKindergarten, searchKindergartens } from "@/app/auth/kindergartenSearch";
 import { isPasswordValid } from "@/app/auth/validation";
 import { ReceivedInvites } from "@/app/auth/ReceivedInvites";
+import type { InviteTargetRole } from "@/app/auth/ReceivedInvites";
 import type { KindergartenInfo } from "@/app/auth/types";
-import type { InviteTargetRole } from "@/app/dashboard/mock/membershipInvites";
 import { PROVIDERS, PROVIDER_ORDER } from "@/app/auth/providers";
 import { ProviderIcon } from "@/app/auth/ProviderIcon";
 import { UserAvatar } from "@/app/auth/UserAvatar";
@@ -156,13 +157,8 @@ function MyPagePanel({ panel, onDone }: { panel: MenuKey; onDone: (message?: str
 
     setIsVerifying(true);
     try {
-      const result = await loginMockUser(user!.loginId ?? user!.email, pwConfirm);
-      if (!result.ok) {
-        setPwError(
-          result.reason === "crypto-unavailable"
-            ? "보안 연결(HTTPS)에서만 비밀번호를 확인할 수 있어요"
-            : "비밀번호가 올바르지 않아요",
-        );
+      if (!(await verifyCurrentPassword(user!.loginId ?? user!.id, pwConfirm))) {
+        setPwError("비밀번호가 올바르지 않아요");
         return;
       }
       setPwError(null);
@@ -194,16 +190,21 @@ function MyPagePanel({ panel, onDone }: { panel: MenuKey; onDone: (message?: str
 
     setIsVerifying(true);
     try {
-      const result = await loginMockUser(user!.loginId ?? user!.email, currentPw);
-      if (!result.ok) {
+      const result = await changePassword({
+        loginId: user!.loginId ?? user!.id,
+        name: user!.name,
+        email: user!.email,
+        currentPassword: currentPw,
+        newPassword: newPw,
+      });
+      if (result !== "ok") {
         setPwError(
-          result.reason === "crypto-unavailable"
-            ? "보안 연결(HTTPS)에서만 비밀번호를 바꿀 수 있어요"
-            : "현재 비밀번호가 올바르지 않아요",
+          result === "wrong-password"
+            ? "현재 비밀번호가 올바르지 않아요"
+            : "비밀번호를 바꾸지 못했어요. 잠시 후 다시 시도해주세요",
         );
         return;
       }
-      await changeMockPassword(user!.id, newPw);
       setPwError(null);
       setCurrentPw("");
       setNewPw("");
@@ -318,7 +319,12 @@ function MyPagePanel({ panel, onDone }: { panel: MenuKey; onDone: (message?: str
               {kinderResults.map((kg) => (
                 <button
                   key={kg.id}
-                  onClick={() => { updateProfile({ kindergarten: kg }); onDone(`${kg.name}에 가입했어요`); }}
+                  // 가입은 곧바로 확정되지 않고 원장의 수락을 기다리는 요청으로 남습니다.
+                  onClick={() =>
+                    void requestJoinKindergarten(kg.id, user.accountType === "child" ? "CHILD" : "TEACHER")
+                      .then(() => onDone(`${kg.name}에 가입을 신청했어요. 원장님이 수락하면 소속돼요.`))
+                      .catch(() => onDone("가입 신청에 실패했어요. 잠시 후 다시 시도해주세요."))
+                  }
                   className="w-full text-left rounded-2xl px-4 py-3 transition-all hover:scale-[1.01] active:scale-95"
                   style={{ background: "#FAFAFA", border: "1.5px solid #E5E7EB" }}
                 >

@@ -1,10 +1,40 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { beginSocialLogin } from "@/app/auth/oauth";
-import { loginMockUser, updateMockUser } from "@/app/auth/mockSignup";
 import { SESSION_TTL_MS, clearSession, loadSession, saveSession } from "@/app/auth/storage";
 import type { AuthSession, AuthUser, SocialProviderId } from "@/app/auth/types";
+import { ApiError, apiGet, apiPost } from "@/app/lib/api";
+import type { PlainUserDTO } from "@/app/lib/dto";
 import { newId } from "@/app/lib/id";
+
+/**
+ * 서버 프로필을 화면이 쓰는 사용자 정보로 옮깁니다.
+ *
+ * 역할(role/teacherRole)·별칭·소속 유치원은 `PlainUserDTO`에 없습니다 — 백엔드에서
+ * 이 값들은 사용자가 아니라 유치원과의 "관계"(RelationshipDTO)에 붙어 있기 때문입니다.
+ * 그래서 여기서 채우지 않고, 대시보드가 `kindergarten/memberships`로 따로 알아냅니다.
+ */
+function toAuthUser(profile: PlainUserDTO): AuthUser {
+  return {
+    id: profile.id,
+    name: profile.name,
+    loginId: profile.id,
+    email: profile.email ?? "",
+    provider: "email",
+    // 서버는 epoch(ms)로 주지만 AuthUser.joinedAt은 ISO 문자열입니다.
+    joinedAt: profile.createdAt ? new Date(profile.createdAt).toISOString() : new Date().toISOString(),
+    accountType: profile.accountType === "CHILD" ? "child" : "adult",
+    birthDate: profile.birthDate,
+    gender: profile.gender === "MALE" ? "male" : profile.gender === "FEMALE" ? "female" : undefined,
+    guardianName: profile.guardianName,
+    guardianPhone: profile.guardianPhone,
+    phone: profile.phone,
+    address: profile.address,
+    addressDetail: profile.addressDetail,
+    zonecode: profile.postcode,
+    onboardingCompleted: profile.onboardingCompleted,
+  };
+}
 
 interface AuthContextValue {
   /** 로그인한 사용자. 비로그인 상태면 null */
@@ -18,7 +48,7 @@ interface AuthContextValue {
   error: string | null;
   /** 인가 페이지로 이동시킵니다. */
   loginWith: (provider: SocialProviderId) => Promise<void>;
-  /** 아이디/비밀번호로 mock 로그인을 시도합니다. 성공하면 true를 돌려주고 세션을 반영합니다. */
+  /** 아이디/비밀번호로 로그인합니다. 성공하면 true를 돌려주고 세션을 반영합니다. */
   loginWithPassword: (loginId: string, password: string) => Promise<boolean>;
   /** 비밀번호 대조가 진행 중인지. 로그인 버튼 잠금/스피너에 씁니다. */
   isSubmittingPassword: boolean;
@@ -84,65 +114,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setError(null);
     setIsSubmittingPassword(true);
     try {
-      const p = new URLSearchParams();
-      p.set("id", loginId);
-      p.set("password", password);
-      const f = await fetch('/api/user/login', {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded"
-        },
-        credentials: 'include',
-        body: p
-      });
-      const r = await f.json();
-      if (r.status != "success") {
-        switch (r.code) {
-          case "UNKNOWN_ERROR":
-            setError("알 수 없는 오류가 발생했습니다.");
-            break;
-          default:
-            setError("아이디 또는 비밀번호가 올바르지 않아요.");
-        }
-        return false;
-      }
+      await apiPost("/api/user/login", { id: loginId, password });
+      const profile = await apiGet<PlainUserDTO>("/api/user/info");
 
-      const q = await fetch('/api/user/info', {
-        method: "GET",
-        credentials: 'include'
-      });
-
-      const t = await q.json();
-
-      if (t.status != "success" || !t.data) {
-        switch (t.code) {
-          default:
-            setError("알 수 없는 오류가 발생했습니다.");
-        }
-        return false;
-      }
-
-      const user: AuthUser = {
-        id: t.data.id,
-        name: t.data.name,
-        loginId: t.data.id ?? t.data.email,
-        email: t.data.email,
-        provider: "email",
-        joinedAt: t.data.createdAt,
-        accountType: t.data.accountType?.toLowerCase(),
-        // birthDate: record.birthDate,
-        // gender: record.gender,
-        guardianName: t.data.guardianName,
-        guardianPhone: t.data.guardianPhone,
-        // nickname: record.nickname,
-        // role: record.role,
-        // teacherRole: record.teacherRole,
-        // kindergarten: record.kindergarten,
-        onboardingCompleted: t.data.onboardingCompleted
-      };
-      setSession({ user: user, accessToken: String(newId()), expiresAt: Date.now() + SESSION_TTL_MS });
+      setSession({ user: toAuthUser(profile), accessToken: String(newId()), expiresAt: Date.now() + SESSION_TTL_MS });
       return true;
     } catch (cause) {
+      if (cause instanceof ApiError) {
+        setError(cause.code === "UNKNOWN_ERROR" ? "알 수 없는 오류가 발생했습니다." : "아이디 또는 비밀번호가 올바르지 않아요.");
+        return false;
+      }
       console.error("[Kindy] 로그인 처리 실패", cause);
       setError("로그인 중 문제가 생겼어요. 잠시 후 다시 시도해주세요.");
       return false;
@@ -151,26 +132,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [setSession]);
 
+  /**
+   * 사용자 정보 일부를 세션에 병합합니다.
+   *
+   * 주소는 서버에도 저장되지만(`user/update`), 역할·별칭·소속 유치원은 백엔드에서
+   * 사용자가 아니라 유치원과의 관계에 붙어 있어 여기서 서버로 보낼 곳이 없습니다.
+   * 그 값들은 세션에만 남고, 실제 판정은 대시보드가 관계 정보로 다시 합니다.
+   */
   const updateProfile = useCallback((partial: Partial<AuthUser>) => {
-    console.log(partial);
     setSessionState((prev) => {
       if (!prev) return prev;
       const next: AuthSession = { ...prev, user: { ...prev.user, ...partial } };
       saveSession(next);
-      // 세션(localStorage)뿐 아니라 mock 계정 저장소에도 반영해야
-      // 로그아웃 후 다시 로그인했을 때 별칭 등이 유지됩니다.
-      if (next.user.provider === "email") {
-        updateMockUser(next.user.id, partial);
-      }
       return next;
     });
+
+    if (partial.address !== undefined || partial.zonecode !== undefined) {
+      apiPost("/api/user/update", {
+        address: partial.address,
+        addressDetail: partial.addressDetail,
+        postcode: partial.zonecode,
+      }).catch((cause) => console.warn("[Kindy] 주소를 저장하지 못했어요.", cause));
+    }
   }, []);
 
   const logout = useCallback(() => {
-    fetch('/api/user/logout', {
-      method: "POST",
-      credentials: 'include'
-    });
+    // 서버 세션 정리는 실패해도 로컬 로그아웃을 막지 않습니다.
+    apiPost("/api/user/logout").catch(() => {});
     clearSession();
     setSessionState(null);
     setError(null);

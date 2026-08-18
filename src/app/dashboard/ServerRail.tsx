@@ -1,14 +1,21 @@
 import type { DashboardWorkspace } from "@/app/dashboard/DashboardStoreContext";
 
-/** 워크스페이스 역할별로 서버 아이콘에 붙일 이모지입니다. 원장 본인 유치원은 이니셜 그대로, 타 유치원은 이모지로 구분합니다. */
-const WORKSPACE_EMOJI: Partial<Record<DashboardWorkspace["role"], string>> = {
+/** 같은 사람이라도 유치원마다 역할이 다를 수 있어, 아이콘 옆 설명으로 구분해 줍니다. */
+const ROLE_LABEL: Record<DashboardWorkspace["role"], string> = {
+  director: "원장으로 참여 중",
+  teacher: "선생님으로 참여 중",
+  parent: "학부모로 참여 중",
+  child: "아이로 참여 중",
+};
+
+const ROLE_EMOJI: Partial<Record<DashboardWorkspace["role"], string>> = {
   parent: "✨",
+  child: "🧒",
 };
 
 /**
  * 디스코드의 "서버 목록" 자리를 대체하는 가장 왼쪽 얇은 레일입니다.
- * 여러 유치원(워크스페이스)을 오갈 수 있도록 배열을 받아 아이콘 목록으로 그립니다.
- * 원장 계정에는 자기 유치원 아래에 데모용 "타 유치원(학부모로 참여 중)" 아이콘이 하나 더 붙습니다.
+ * 소속된 유치원마다 아이콘이 하나씩 붙고, 그 유치원에서의 역할이 툴팁에 함께 나옵니다.
  */
 export function ServerRail({
   workspaces,
@@ -38,10 +45,8 @@ export function ServerRail({
       <div className="w-8 h-px" style={{ background: "rgba(255,255,255,0.15)" }} />
       {workspaces.map((ws) => {
         const active = ws.id === activeWorkspaceId;
-        // 워크스페이스가 직접 지정한 아이콘(4역할 데모 계정)이 우선입니다.
-        const emoji = ws.icon ?? WORKSPACE_EMOJI[ws.role];
-        const suffix = ws.label ?? (WORKSPACE_EMOJI[ws.role] ? "학부모로 참여 중" : undefined);
-        const title = suffix ? `${ws.kindergarten.name} (${suffix})` : ws.kindergarten.name;
+        const emoji = ROLE_EMOJI[ws.role];
+        const title = `${ws.kindergarten.name} (${ROLE_LABEL[ws.role]})`;
         return (
           <button
             key={ws.id}

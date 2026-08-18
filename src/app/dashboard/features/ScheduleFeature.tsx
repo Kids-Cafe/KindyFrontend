@@ -32,7 +32,7 @@ function formatDate(dateStr: string): string {
 /** 아이 계정을 제외한 대시보드 상단에 붙는 "다가오는 일정" 배너입니다. 개별적으로 닫을 수 있습니다. */
 export function UpcomingScheduleBanner() {
   const { data } = useDashboardStore();
-  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+  const [dismissed, setDismissed] = useState<Set<number>>(new Set());
 
   const relevant = useMemo(() => {
     const classId = data.role === "teacher" ? data.teacher.classId : data.role === "parent" ? data.myChild?.classId : undefined;
@@ -77,7 +77,7 @@ function EventRow({ event, canEdit }: { event: ScheduleEvent; canEdit: boolean }
   const [title, setTitle] = useState(event.title);
   const [date, setDate] = useState(event.date);
   const [time, setTime] = useState(event.time ?? "");
-  const [classId, setClassId] = useState<string | undefined>(event.classId);
+  const [classId, setClassId] = useState<number | undefined>(event.classId);
 
   const upcoming = daysUntil(event.date) >= 0;
 
@@ -116,7 +116,7 @@ function EventRow({ event, canEdit }: { event: ScheduleEvent; canEdit: boolean }
         {data.role === "director" && (
           <select
             value={classId ?? ""}
-            onChange={(e) => setClassId(e.target.value || undefined)}
+            onChange={(e) => setClassId(e.target.value ? Number(e.target.value) : undefined)}
             className="w-full rounded-xl px-3.5 py-2 text-xs outline-none"
             style={{ background: "var(--input-background)", border: "1px solid rgba(232,121,160,0.2)", color: "#6B3580" }}
           >
@@ -182,6 +182,9 @@ function EventRow({ event, canEdit }: { event: ScheduleEvent; canEdit: boolean }
 /** 반 탭 중 "유치원 전체"(반이 지정되지 않은 일정)를 가리키는 값입니다. */
 const WHOLE_KINDERGARTEN = "__whole__";
 
+/** 반 탭은 두 개의 특수 탭과 실제 반 id(숫자)를 함께 씁니다. */
+type ScheduleTab = "all" | typeof WHOLE_KINDERGARTEN | number;
+
 export function ScheduleFeature() {
   const { user } = useAuth();
   const { data, addScheduleEvent } = useDashboardStore();
@@ -198,8 +201,8 @@ export function ScheduleFeature() {
   const hasElevatedPermission = teacherHasPermission(data, "manageSchedule");
 
   // 선생님은 자기 반 탭에서 시작합니다. 원장은 전체를 먼저 봅니다.
-  const [activeTab, setActiveTab] = useState<string>(
-    () => (data.role === "teacher" ? data.teacher.classId : "") || "all",
+  const [activeTab, setActiveTab] = useState<ScheduleTab>(
+    () => (data.role === "teacher" ? data.teacher.classId : undefined) ?? "all",
   );
 
   // 학부모/아이는 탭이 없으므로 항상 자기 반 + 유치원 전체만 봅니다.
@@ -285,11 +288,11 @@ export function ScheduleFeature() {
 
       {showClassTabs && data.classes.length > 0 && (
         <div className="flex flex-wrap gap-2 mb-4" role="tablist" aria-label="반 선택">
-          {[
+          {([
             { id: "all", name: "전체" },
             { id: WHOLE_KINDERGARTEN, name: "유치원 전체" },
-            ...data.classes,
-          ].map((c) => {
+            ...data.classes.map((c) => ({ id: c.id, name: c.name })),
+          ] satisfies { id: ScheduleTab; name: string }[]).map((c) => {
             const active = activeTab === c.id;
             return (
               <button

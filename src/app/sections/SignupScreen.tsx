@@ -17,7 +17,8 @@ import { openAddressSearch } from "@/app/auth/addressSearch";
 import type { StudentGender } from "@/app/auth/types";
 import { useLeaveConfirmation } from "@/app/hooks/useLeaveConfirmation";
 import { newId } from "@/app/lib/id";
-import {registerUser} from "@/app/auth/signup.ts";
+import { ApiError, apiGet, apiPost } from "@/app/lib/api";
+import { registerUser } from "@/app/auth/signup";
 
 interface FormState {
   name: string;
@@ -147,17 +148,12 @@ export function SignupScreen({
       setErrors((prev) => ({ ...prev, loginId: "4~20자의 영문/숫자, -, _ 만 사용할 수 있어요" }));
       return;
     }
-    fetch('/api/user/getIdExists?id=' + form.loginId, {
-      method: "GET"
-    }).then(r => r.json()).then(r => {
-      if (r.data?.exists) {
-        setLoginIdStatus("taken");
-        setErrors((prev) => ({ ...prev, loginId: "이미 사용 중인 아이디예요" }));
-      } else {
-        setLoginIdStatus("available");
-        setErrors((prev) => ({ ...prev, loginId: undefined }));
-      }
-    })
+    apiGet<{ exists?: boolean }>("/api/user/getIdExists", { id: form.loginId })
+      .then((data) => {
+        setLoginIdStatus(data?.exists ? "taken" : "available");
+        setErrors((prev) => ({ ...prev, loginId: data?.exists ? "이미 사용 중인 아이디예요" : undefined }));
+      })
+      .catch(() => setErrors((prev) => ({ ...prev, loginId: "아이디를 확인하지 못했어요. 잠시 후 다시 시도해주세요." })));
   }
 
   function handleSendEmailVerification() {
@@ -165,16 +161,20 @@ export function SignupScreen({
       setErrors((prev) => ({ ...prev, email: "올바른 이메일 주소를 입력해주세요" }));
       return;
     }
-    fetch('/api/user/getVerificationEmail?email=' + form.email, {
-      method: "GET"
-    }).then(r => r.json()).then(r => {
-      if (r.code == "EMAIL_EXISTS") {
-        setErrors((prev) => ({ ...prev, email: "이미 가입된 이메일이에요" }));
-      } else {
+    // 서버가 인증번호를 세션에 담아 두므로 세션 쿠키를 반드시 함께 보내야 합니다
+    // (`credentials: "include"` — apiGet이 항상 붙입니다). 빠지면 아래 verifyEmail이 항상 실패합니다.
+    apiGet("/api/user/getVerificationEmail", { email: form.email })
+      .then(() => {
         setErrors((prev) => ({ ...prev, email: undefined }));
         setEmailVerification({ sent: true, code: "", verified: false });
-      }
-    })
+      })
+      .catch((cause) => {
+        const code = cause instanceof ApiError ? cause.code : "";
+        setErrors((prev) => ({
+          ...prev,
+          email: code === "EMAIL_EXISTS" ? "이미 가입된 이메일이에요" : "인증 메일을 보내지 못했어요. 잠시 후 다시 시도해주세요.",
+        }));
+      });
   }
 
   function handleConfirmEmailVerification() {
@@ -182,24 +182,12 @@ export function SignupScreen({
       setErrors((prev) => ({ ...prev, email: "인증번호 6자리를 입력해주세요" }));
       return;
     }
-    const p = new URLSearchParams();
-    p.set("email", form.email);
-    p.set("code", emailVerification.code);
-    fetch('/api/user/verifyEmail', {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      credentials: "include",
-      body: p
-    }).then(r => r.json()).then(r => {
-      if (r.code == "VERIFICATION_COMPLETE") {
+    apiPost("/api/user/verifyEmail", { email: form.email, code: emailVerification.code })
+      .then(() => {
         setErrors((prev) => ({ ...prev, email: undefined }));
         setEmailVerification((prev) => ({ ...prev, verified: true }));
-      } else {
-        setErrors((prev) => ({ ...prev, email: "인증번호가 일치하지 않습니다" }));
-      }
-    })
+      })
+      .catch(() => setErrors((prev) => ({ ...prev, email: "인증번호가 일치하지 않습니다" })));
   }
 
   function handleCheckChildLoginId() {
@@ -208,17 +196,12 @@ export function SignupScreen({
       setChildErrors((prev) => ({ ...prev, loginId: "4~20자의 영문/숫자, -, _ 만 사용할 수 있어요" }));
       return;
     }
-    fetch('/api/user/getIdExists?id=' + childForm.loginId, {
-      method: "GET"
-    }).then(r => r.json()).then(r => {
-      if (r.data?.exists) {
-        setChildLoginIdStatus("taken");
-        setChildErrors((prev) => ({ ...prev, loginId: "이미 사용 중인 아이디예요" }));
-      } else {
-        setChildLoginIdStatus("available");
-        setChildErrors((prev) => ({ ...prev, loginId: undefined }));
-      }
-    })
+    apiGet<{ exists?: boolean }>("/api/user/getIdExists", { id: childForm.loginId })
+      .then((data) => {
+        setChildLoginIdStatus(data?.exists ? "taken" : "available");
+        setChildErrors((prev) => ({ ...prev, loginId: data?.exists ? "이미 사용 중인 아이디예요" : undefined }));
+      })
+      .catch(() => setChildErrors((prev) => ({ ...prev, loginId: "아이디를 확인하지 못했어요. 잠시 후 다시 시도해주세요." })));
   }
 
   function validate(): FieldErrors {

@@ -2,24 +2,15 @@ import { useEffect, useMemo, useState } from "react";
 import { ShieldCheck, Plus, Trash2, Search, Mail, X } from "lucide-react";
 import { useDashboardStore } from "@/app/dashboard/DashboardStoreContext";
 import { useAuth } from "@/app/auth/AuthContext";
-import { searchUsersByLoginId } from "@/app/auth/mockSignup";
-import type { UserSearchResult } from "@/app/auth/mockSignup";
-import { apiGet, apiPost } from "@/app/lib/api";
+import { cancelInviteOnServer, fetchSentInvites, sendInviteOnServer } from "@/app/dashboard/backendSync";
+import { searchUsers } from "@/app/dashboard/userSync";
+import type { InviteDTO, PlainUserDTO } from "@/app/lib/dto";
 import { PERMISSION_LABELS } from "@/app/dashboard/types";
 import type { PermissionKey } from "@/app/dashboard/types";
 import { useConfirm } from "@/app/components/ConfirmDialog";
 
 const ALL_PERMISSIONS = Object.keys(PERMISSION_LABELS) as PermissionKey[];
 const ROLE_COLORS = ["#E879A0", "#60A5FA", "#86EFAC", "#F9D56E", "#C084FC"];
-
-/** 백엔드 InviteDTO입니다. 표시용 이름/아이디/반 정보가 없어(백엔드 개선 필요), 검색 결과에서 알아낸 값만 보충합니다. */
-interface InviteDTO {
-  id: number;
-  kindergartenId: number;
-  userId: string;
-  status: "PENDING" | "ACCEPTED" | "REJECTED" | "CANCELED";
-  createdAt: number;
-}
 
 type InviteStatus = "pending" | "accepted" | "rejected";
 const STATUS_MAP: Record<InviteDTO["status"], InviteStatus> = {
@@ -54,19 +45,19 @@ export function MemberManageFeature() {
   const [newRoleName, setNewRoleName] = useState("");
 
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<UserSearchResult[]>([]);
+  const [results, setResults] = useState<PlainUserDTO[]>([]);
   const [searched, setSearched] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const [invitingId, setInvitingId] = useState<string | null>(null);
-  // 백엔드 초대에는 classId가 없어(백엔드 개선 필요) 화면에만 남겨둔 선택값입니다.
-  const [inviteClassId, setInviteClassId] = useState<number | "">(data.classes[0]?.id ?? "");
+  // 초대에 붙일 역할입니다. 반 배정은 서버 초대에 담을 수 없어(RelationshipDTO.classId를
+  // 세우는 엔드포인트가 없습니다) 수락 후 따로 지정해야 합니다.
+  const [inviteRoleId, setInviteRoleId] = useState<number | "">("");
   const [sentInvites, setSentInvites] = useState<InviteDTO[]>([]);
-  // 초대 대상의 이름/아이디는 InviteDTO에 없어, 이번 세션에서 검색해 알아낸 결과로만 채웁니다.
+  // 초대 대상의 이름은 이번 세션에서 검색해 알아낸 결과로 채웁니다(InviteDTO에는 userId만 있습니다).
   const [nameById, setNameById] = useState<Record<string, { name: string; loginId: string }>>({});
 
   function refreshInvites() {
-    apiGet<InviteDTO[]>("/api/kindergarten/invite/list", { kindergartenId: data.kindergarten.id })
-      .then(setSentInvites)
-      .catch(() => {});
+    fetchSentInvites(data.kindergarten.id).then(setSentInvites).catch(() => {});
   }
 
   useEffect(() => {
@@ -84,33 +75,48 @@ export function MemberManageFeature() {
     updateRolePermissions(roleId, next);
   }
 
-  function handleSearch() {
-    const all = searchUsersByLoginId(query);
-    const filtered = all.filter((r) => r.accountType === "adult" && r.id !== user?.id);
-    setResults(filtered);
-    setNameById((prev) => ({
-      ...prev,
-      ...Object.fromEntries(filtered.map((r) => [r.id, { name: r.name, loginId: r.loginId }])),
-    }));
+  async function handleSearch() {
+    // 서버가 아이디/이름 부분 일치로 찾아 줍니다. 두 글자 미만은 조회하지 않습니다.
+    if (query.trim().length < 2) {
+      setSearchError("두 글자 이상 입력해주세요.");
+      setResults([]);
+      setSearched(true);
+      return;
+    }
+    setSearchError(null);
+    try {
+      const found = await searchUsers(query);
+      const filtered = found.filter((r) => r.accountType !== "CHILD" && r.id !== user?.id);
+      setResults(filtered);
+      setNameById((prev) => ({
+        ...prev,
+        ...Object.fromEntries(filtered.map((r) => [r.id, { name: r.name, loginId: r.id }])),
+      }));
+    } catch {
+      setResults([]);
+      setSearchError("계정을 찾지 못했어요. 잠시 후 다시 시도해주세요.");
+    }
     setSearched(true);
   }
 
   function openInviteForm(resultId: string) {
     setInvitingId(resultId);
-    setInviteClassId(data.classes[0]?.id ?? "");
+    setInviteRoleId("");
   }
 
-  async function handleSendInvite(result: UserSearchResult) {
+  async function handleSendInvite(result: PlainUserDTO) {
     if (!user) return;
-    // 초대 시점에 반을 지정하는 필드가 백엔드 InviteDTO에 없어(백엔드 개선 필요),
-    // 여기서 고른 반은 화면 안내용일 뿐 서버로 전달되지 않습니다.
-    await apiPost("/api/kindergarten/invite", { id: data.kindergarten.id, userId: result.id, type: "TEACHER" }).catch(() => {});
+    try {
+      await sendInviteOnServer(data.kindergarten.id, result.id, "TEACHER", inviteRoleId === "" ? undefined : inviteRoleId);
+    } catch (cause) {
+      console.warn("[Kindy] 초대를 보내지 못했어요.", cause);
+    }
     setInvitingId(null);
     refreshInvites();
   }
 
   function handleCancelInvite(inviteId: number) {
-    apiPost("/api/kindergarten/invite/cancel", { id: inviteId })
+    cancelInviteOnServer(inviteId)
       .catch(() => {})
       .finally(refreshInvites);
   }
@@ -205,7 +211,9 @@ export function MemberManageFeature() {
 
           <div className="space-y-2">
             {searched && results.length === 0 && (
-              <p className="text-xs" style={{ color: "#A06080" }}>일치하는 계정이 없어요. 아이디를 다시 확인해주세요.</p>
+              <p className="text-xs" style={{ color: "#A06080" }}>
+                {searchError ?? "일치하는 계정이 없어요. 아이디를 다시 확인해주세요."}
+              </p>
             )}
             {results.map((r) => {
               const isMember = memberIds.has(r.id);
@@ -214,10 +222,9 @@ export function MemberManageFeature() {
                 <div key={r.id} className="rounded-xl px-3.5 py-3" style={{ background: "#FAFAFA", border: "1px solid #F3F4F6" }}>
                   <div className="flex items-center justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="text-sm font-bold truncate" style={{ color: "#3B1355" }}>{r.name} <span className="font-normal" style={{ color: "#A06080" }}>· {r.loginId}</span></p>
-                      <p className="text-xs" style={{ color: "#A06080" }}>
-                        {r.kindergartenName ? `${r.kindergartenName} 소속` : "소속 유치원 없음"}
-                      </p>
+                      <p className="text-sm font-bold truncate" style={{ color: "#3B1355" }}>{r.name} <span className="font-normal" style={{ color: "#A06080" }}>· {r.id}</span></p>
+                      {/* 검색 결과에는 소속 유치원이 담기지 않습니다(공개 필드만 내려옵니다). */}
+                      <p className="text-xs" style={{ color: "#A06080" }}>{r.email ?? ""}</p>
                     </div>
                     {isMember ? (
                       <span className="text-[11px] font-bold px-2.5 py-1 rounded-full shrink-0" style={{ background: STATUS_COLOR.accepted.bg, color: STATUS_COLOR.accepted.fg }}>
@@ -240,15 +247,16 @@ export function MemberManageFeature() {
 
                   {invitingId === r.id && (
                     <div className="flex items-center gap-2 mt-2.5 pt-2.5" style={{ borderTop: "1px solid #F3F4F6" }}>
+                      {/* 서버 초대에 담을 수 있는 건 역할까지입니다. 반 배정은 수락 후 따로 해야 합니다. */}
                       <select
-                        value={inviteClassId}
-                        onChange={(e) => setInviteClassId(e.target.value ? Number(e.target.value) : "")}
+                        value={inviteRoleId}
+                        onChange={(e) => setInviteRoleId(e.target.value ? Number(e.target.value) : "")}
                         className="flex-1 rounded-lg px-2.5 py-1.5 text-xs outline-none"
                         style={{ background: "var(--input-background)", border: "1px solid rgba(232,121,160,0.2)", color: "#6B3580" }}
                       >
-                        <option value="">유치원 소속 (반 없음)</option>
-                        {data.classes.map((c) => (
-                          <option key={c.id} value={c.id}>{c.name} 담임으로</option>
+                        <option value="">역할 없이 초대</option>
+                        {data.roles.map((r) => (
+                          <option key={r.id} value={r.id}>{r.name} 역할로</option>
                         ))}
                       </select>
                       <button onClick={() => setInvitingId(null)} className="text-xs font-bold px-2 py-1.5" style={{ color: "#A06080" }}>취소</button>

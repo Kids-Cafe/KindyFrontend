@@ -54,7 +54,7 @@ export function ChildFullReport({ child, viewerRole }: { child: ChildRecord; vie
     setNoteText("");
   }
 
-  function submitComment(noteId: string) {
+  function submitComment(noteId: number) {
     const text = commentDrafts[noteId] ?? "";
     if (!text.trim() || !user) return;
     addParentNoteComment(child.id, noteId, getDisplayName(user), data.role, text);

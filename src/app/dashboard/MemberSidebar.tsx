@@ -20,7 +20,7 @@ function ClassGroup({
   onOpenTeacher,
 }: {
   data: DashboardData;
-  classId: string;
+  classId: number;
   className: string;
   onOpenStudent: (childId: string) => void;
   onOpenTeacher: (teacherId: string) => void;

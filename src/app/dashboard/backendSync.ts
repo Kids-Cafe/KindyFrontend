@@ -1,5 +1,19 @@
 import { apiGet, apiPost, apiUpload } from "@/app/lib/api";
 import type {
+  BackendPermission,
+  ClassDTO,
+  InviteDTO,
+  KindergartenDTO,
+  NoticeDTO,
+  PhotoDTO,
+  RelationshipDTO,
+  RoleDTO,
+  ScheduleDTO,
+  SupplyCommentDTO,
+  SupplyDTO,
+} from "@/app/lib/dto";
+import { toBackendPermission, toPermissionKeys } from "@/app/lib/permissions";
+import type {
   ClassRecord,
   KindergartenRecord,
   NoticeRecord,
@@ -14,30 +28,21 @@ import type {
 
 /**
  * `DashboardData`를 실제 백엔드(org.kidscafe.kindy)와 동기화하는 함수들입니다.
+ *
  * 백엔드의 생성/수정/삭제 엔드포인트는 대부분 `Void`만 돌려주므로("생성 후 재조회" 패턴),
  * 여기 있는 함수들은 변이 호출 뒤 해당 목록을 다시 받아와 매핑된 배열을 돌려줍니다.
- * DashboardStoreContext는 이 배열로 `setData`만 하면 됩니다.
+ * 호출부(DashboardStoreContext)는 그 배열로 `setData`만 하면 됩니다.
  *
- * 백엔드 DTO에 없는 필드(공지 배너, 역할 색상, 사진 테마/캡션, 준비물 댓글, 일정
- * 작성자)는 이전 로컬 값을 최대한 보존하되, 서버 재조회 시 사라질 수 있습니다.
+ * 서버에 대응 칼럼이 아예 없어 로컬에서만 유지되는 값은 지금 기준으로 딱 하나,
+ * `ScheduleEvent.createdBy`뿐입니다(ScheduleDTO에 작성자 필드가 없습니다).
+ * 나머지(공지 배너, 역할 색상, 사진 테마·캡션, 준비물 작성자·댓글)는 전부 서버에 저장됩니다.
  */
 
-// ---- 백엔드 DTO 형태(응답에서 실제로 쓰는 필드만) ----
-interface ClassDTO { id: number; kindergartenId: number; name: string }
-interface NoticeDTO { id: number; kindergartenId: number; num: number; title: string; content: string; authorName?: string; pinned: boolean; createdAt: number }
-interface ScheduleDTO { id: number; kindergartenId: number; date: string; time?: string; title: string; classId?: number; createdAt: number }
-interface SupplyDTO { id: number; classId: number; date?: string; title: string; content: string; createdAt: number }
-interface PhotoDTO { id: number; classId: number; url: string; createdAt: number }
-interface RoleDTO { id: number; kindergartenId: number; name: string }
-interface RelationshipDTO {
-  kindergartenId: number;
-  kindergartenName: string;
-  userId: string;
-  type: "CHILD" | "TEACHER";
-  classId?: number;
-  roleId?: number;
-  roleName?: string;
-  nickname?: string;
+const DEFAULT_PHOTO_THEME: PhotoThemeId = "clip";
+const PHOTO_THEMES: PhotoThemeId[] = ["clip", "polaroid", "frame-wood", "frame-gold"];
+
+function toPhotoTheme(value: string | undefined): PhotoThemeId {
+  return PHOTO_THEMES.includes(value as PhotoThemeId) ? (value as PhotoThemeId) : DEFAULT_PHOTO_THEME;
 }
 
 // ---- Class ----
@@ -46,7 +51,7 @@ function mapClass(dto: ClassDTO): ClassRecord {
 }
 
 export async function fetchClasses(kindergartenId: number): Promise<ClassRecord[]> {
-  const list = await apiGet<ClassDTO[]>("/api/class/list", { kindergartenId: kindergartenId });
+  const list = await apiGet<ClassDTO[]>("/api/class/list", { kindergartenId });
   return list.map(mapClass);
 }
 
@@ -66,60 +71,59 @@ export async function deleteClassOnServer(kindergartenId: number, classId: numbe
 }
 
 // ---- Notice ----
-function mapNotice(dto: NoticeDTO, prev: NoticeRecord | undefined): NoticeRecord {
+function mapNotice(dto: NoticeDTO): NoticeRecord {
   return {
     id: dto.id,
     num: dto.num,
     kindergartenId: dto.kindergartenId,
     title: dto.title,
     body: dto.content,
-    authorName: dto.authorName ?? prev?.authorName ?? "",
+    authorName: dto.authorName ?? dto.author,
     createdAt: dto.createdAt,
     pinned: dto.pinned,
-    // 배너 노출 여부는 서버에 저장되는 필드가 아니라, 이전에 로컬에서 켜둔 값을 그대로 이어갑니다.
-    bannerEnabled: prev?.bannerEnabled ?? false,
+    bannerEnabled: dto.bannerEnabled,
   };
 }
 
-export async function fetchNotices(kindergartenId: number, prevById: Map<number, NoticeRecord>): Promise<NoticeRecord[]> {
+export async function fetchNotices(kindergartenId: number): Promise<NoticeRecord[]> {
   const list = await apiGet<NoticeDTO[]>("/api/kindergarten/notice/list", { kindergartenId });
-  return list.map((dto) => mapNotice(dto, prevById.get(dto.id)));
+  return list.map(mapNotice);
 }
 
 export async function createNoticeOnServer(
   kindergartenId: number,
   title: string,
   content: string,
-  prevById: Map<number, NoticeRecord>,
+  bannerEnabled: boolean,
 ): Promise<NoticeRecord[]> {
-  await apiPost("/api/kindergarten/notice/create", { kindergartenId, title, content, pinned: false });
-  return fetchNotices(kindergartenId, prevById);
+  await apiPost("/api/kindergarten/notice/create", { kindergartenId, title, content, pinned: false, bannerEnabled });
+  return fetchNotices(kindergartenId);
 }
 
-export async function setNoticePinnedOnServer(
+/**
+ * 공지 수정입니다. `notice/edit`은 id가 아니라 유치원별 일련번호(num)로 대상을 찾고,
+ * 넘기지 않은 필드는 비워 버리므로 항상 전체 값을 함께 보냅니다.
+ */
+export async function updateNoticeOnServer(
   kindergartenId: number,
   notice: NoticeRecord,
-  pinned: boolean,
-  prevById: Map<number, NoticeRecord>,
+  patch: Partial<Pick<NoticeRecord, "title" | "body" | "pinned" | "bannerEnabled">>,
 ): Promise<NoticeRecord[]> {
-  // notice/edit은 id가 아니라 유치원별 일련번호(num)로 대상을 찾습니다.
+  const next = { ...notice, ...patch };
   await apiPost("/api/kindergarten/notice/edit", {
     kindergartenId,
     num: notice.num ?? notice.id,
-    title: notice.title,
-    content: notice.body,
-    pinned,
+    title: next.title,
+    content: next.body,
+    pinned: next.pinned,
+    bannerEnabled: next.bannerEnabled,
   });
-  return fetchNotices(kindergartenId, prevById);
+  return fetchNotices(kindergartenId);
 }
 
-export async function deleteNoticeOnServer(
-  kindergartenId: number,
-  noticeId: number,
-  prevById: Map<number, NoticeRecord>,
-): Promise<NoticeRecord[]> {
+export async function deleteNoticeOnServer(kindergartenId: number, noticeId: number): Promise<NoticeRecord[]> {
   await apiPost("/api/kindergarten/notice/delete", { id: noticeId });
-  return fetchNotices(kindergartenId, prevById);
+  return fetchNotices(kindergartenId);
 }
 
 // ---- Schedule ----
@@ -131,7 +135,7 @@ function mapSchedule(dto: ScheduleDTO, prev: ScheduleEvent | undefined): Schedul
     title: dto.title,
     date: dto.date,
     time: dto.time,
-    // 작성자는 ScheduleDTO에 없는 필드라 서버 재조회 후엔 알 수 없습니다. 이전 값을 유지합니다.
+    // ScheduleDTO에 작성자 칼럼이 없어 서버 재조회 후엔 알 수 없습니다. 이전 값을 유지합니다.
     createdBy: prev?.createdBy ?? "",
     createdAt: dto.createdAt,
   };
@@ -177,24 +181,43 @@ export async function deleteScheduleOnServer(
 }
 
 // ---- Supply ----
-function mapSupply(dto: SupplyDTO, prev: SupplyItem | undefined): SupplyItem {
+function mapSupply(dto: SupplyDTO, comments: SupplyItem["comments"]): SupplyItem {
   return {
     id: dto.id,
     classId: dto.classId,
     title: dto.title,
-    body: dto.content,
-    // 작성자는 SupplyDTO에 없는 필드입니다. 이전 값을 유지합니다.
-    authorName: prev?.authorName ?? "",
+    body: dto.content ?? "",
+    authorName: dto.authorName ?? dto.author,
     createdAt: dto.createdAt,
     dueDate: dto.date,
-    // 댓글은 백엔드에 아직 없는 기능이라 로컬에서만 이어갑니다.
-    comments: prev?.comments ?? [],
+    comments,
   };
 }
 
-export async function fetchSupplies(classId: number, prevById: Map<number, SupplyItem>): Promise<SupplyItem[]> {
+/**
+ * 준비물 목록과 각 항목의 댓글을 함께 가져옵니다. 백엔드는 댓글을 준비물별로만
+ * 조회할 수 있어(`supply/comment/list?supplyId=`) 항목 수만큼 요청이 나갑니다.
+ */
+export async function fetchSupplies(classId: number): Promise<SupplyItem[]> {
   const list = await apiGet<SupplyDTO[]>("/api/class/supply/list", { classId });
-  return list.map((dto) => mapSupply(dto, prevById.get(dto.id)));
+  return Promise.all(
+    list.map(async (dto) => {
+      const comments = await fetchSupplyComments(dto.id).catch(() => []);
+      return mapSupply(dto, comments);
+    }),
+  );
+}
+
+async function fetchSupplyComments(supplyId: number): Promise<SupplyItem["comments"]> {
+  const list = await apiGet<SupplyCommentDTO[]>("/api/class/supply/comment/list", { supplyId });
+  return list.map((c) => ({
+    id: c.id,
+    authorName: c.authorName ?? c.author,
+    // 댓글 작성자의 대시보드 역할은 서버가 알려주지 않습니다. 표시는 이름으로만 합니다.
+    authorRole: "parent" as const,
+    text: c.content,
+    createdAt: c.createdAt,
+  }));
 }
 
 export async function createSupplyOnServer(
@@ -202,108 +225,191 @@ export async function createSupplyOnServer(
   title: string,
   content: string,
   dueDate: string | undefined,
-  prevById: Map<number, SupplyItem>,
 ): Promise<SupplyItem[]> {
   await apiPost("/api/class/supply/create", { classId, date: dueDate ?? "", title, content });
-  return fetchSupplies(classId, prevById);
+  return fetchSupplies(classId);
+}
+
+export async function updateSupplyOnServer(
+  classId: number,
+  supplyId: number,
+  title: string,
+  content: string,
+  dueDate: string | undefined,
+): Promise<SupplyItem[]> {
+  await apiPost("/api/class/supply/edit", { id: supplyId, date: dueDate ?? "", title, content });
+  return fetchSupplies(classId);
+}
+
+export async function deleteSupplyOnServer(classId: number, supplyId: number): Promise<SupplyItem[]> {
+  await apiPost("/api/class/supply/delete", { id: supplyId });
+  return fetchSupplies(classId);
+}
+
+export async function createSupplyCommentOnServer(classId: number, supplyId: number, content: string): Promise<SupplyItem[]> {
+  await apiPost("/api/class/supply/comment/create", { supplyId, content });
+  return fetchSupplies(classId);
+}
+
+export async function deleteSupplyCommentOnServer(classId: number, commentId: number): Promise<SupplyItem[]> {
+  await apiPost("/api/class/supply/comment/delete", { id: commentId });
+  return fetchSupplies(classId);
 }
 
 // ---- Photo ----
-function mapPhoto(dto: PhotoDTO, prev: PhotoRecord | undefined): PhotoRecord {
+function mapPhoto(dto: PhotoDTO): PhotoRecord {
   return {
     id: dto.id,
     classId: dto.classId,
     url: dto.url,
-    caption: prev?.caption,
-    // 업로더/테마는 PhotoDTO에 없는 필드라 로컬에서만 이어갑니다(백엔드 개선 필요).
-    uploadedBy: prev?.uploadedBy ?? "",
-    theme: prev?.theme ?? "clip",
+    caption: dto.caption,
+    uploadedBy: dto.authorName ?? dto.author,
+    theme: toPhotoTheme(dto.theme),
     takenAt: dto.createdAt,
   };
 }
 
-export async function fetchPhotos(classId: number, prevById: Map<number, PhotoRecord>): Promise<PhotoRecord[]> {
+export async function fetchPhotos(classId: number): Promise<PhotoRecord[]> {
   const list = await apiGet<PhotoDTO[]>("/api/class/photo/list", { classId });
-  return list.map((dto) => mapPhoto(dto, prevById.get(dto.id)));
+  return list.map(mapPhoto);
 }
 
 export async function addPhotoOnServer(
   classId: number,
   file: File,
-  uploadedBy: string,
   theme: PhotoThemeId,
   caption: string | undefined,
-  prevById: Map<number, PhotoRecord>,
 ): Promise<PhotoRecord[]> {
-  await apiUpload("/api/class/photo/add", { classId }, file);
-  const fresh = await fetchPhotos(classId, prevById);
-  // 방금 올린 사진(가장 최근 createdAt)에 한해 이번에 고른 테마/작성자/캡션을 로컬로 붙여줍니다.
-  if (fresh.length === 0) return fresh;
-  const latest = fresh.reduce((a, b) => (a.takenAt >= b.takenAt ? a : b));
-  return fresh.map((p) => (p.id === latest.id ? { ...p, uploadedBy, theme, caption } : p));
+  // 캡션·테마·작성자 모두 업로드 시점에 서버가 저장하므로, 올린 뒤 재조회하면 그대로 돌아옵니다.
+  await apiUpload("/api/class/photo/add", { classId, theme, caption }, file);
+  return fetchPhotos(classId);
 }
 
-export async function deletePhotoOnServer(classId: number, photoId: number, prevById: Map<number, PhotoRecord>): Promise<PhotoRecord[]> {
+export async function updatePhotoOnServer(
+  classId: number,
+  photoId: number,
+  patch: { theme?: PhotoThemeId; caption?: string },
+): Promise<PhotoRecord[]> {
+  await apiPost("/api/class/photo/edit", { id: photoId, theme: patch.theme, caption: patch.caption });
+  return fetchPhotos(classId);
+}
+
+export async function deletePhotoOnServer(classId: number, photoId: number): Promise<PhotoRecord[]> {
   await apiPost("/api/class/photo/remove", { id: photoId });
-  return fetchPhotos(classId, prevById);
+  return fetchPhotos(classId);
 }
 
 // ---- Role ----
-function mapRole(dto: RoleDTO, prev: RoleDef | undefined, colorForIndex: (index: number) => string, index: number): RoleDef {
-  return {
-    id: dto.id,
-    name: dto.name,
-    // 색상은 RoleDTO에 없는 필드라 이전 값을 유지하고, 처음 보는 역할이면 순번대로 배정합니다.
-    color: prev?.color ?? colorForIndex(index),
-    // 권한을 켜고 끄는 백엔드 엔드포인트가 없어(조회용 role/permissions만 존재) 완전히 로컬 상태입니다.
-    permissions: prev?.permissions ?? [],
-  };
+/**
+ * 역할 목록과 각 역할의 권한을 함께 가져옵니다. 권한은 역할별로만 조회할 수 있어
+ * (`role/permissions?id=`) 역할 수만큼 요청이 나갑니다.
+ */
+export async function fetchRoles(kindergartenId: number): Promise<RoleDef[]> {
+  const list = await apiGet<RoleDTO[]>("/api/kindergarten/role/list", { kindergartenId });
+  return Promise.all(
+    list.map(async (dto) => ({
+      id: dto.id,
+      name: dto.name,
+      color: dto.color || ROLE_COLOR_FALLBACK[0],
+      permissions: await fetchRolePermissions(dto.id).catch(() => [] as PermissionKey[]),
+    })),
+  );
 }
 
+/** 색상 없이 만들어진 예전 역할을 위한 기본값입니다. */
 const ROLE_COLOR_FALLBACK = ["#E879A0", "#60A5FA", "#86EFAC", "#F9D56E", "#C084FC"];
 
-export async function fetchRoles(kindergartenId: number, prevById: Map<number, RoleDef>): Promise<RoleDef[]> {
-  const list = await apiGet<RoleDTO[]>("/api/kindergarten/role/list", { kindergartenId });
-  return list.map((dto, i) => mapRole(dto, prevById.get(dto.id), (idx) => ROLE_COLOR_FALLBACK[idx % ROLE_COLOR_FALLBACK.length], i));
+async function fetchRolePermissions(roleId: number): Promise<PermissionKey[]> {
+  // 조회인데도 POST입니다(백엔드 `role/permissions`가 @PostMapping).
+  const list = await apiPost<BackendPermission[]>("/api/kindergarten/role/permissions", { id: roleId });
+  return toPermissionKeys(list ?? []);
 }
 
-export async function createRoleOnServer(kindergartenId: number, name: string, prevById: Map<number, RoleDef>): Promise<RoleDef[]> {
-  await apiPost("/api/kindergarten/role/create", { id: kindergartenId, name });
-  return fetchRoles(kindergartenId, prevById);
+export async function createRoleOnServer(kindergartenId: number, name: string, color: string): Promise<RoleDef[]> {
+  await apiPost("/api/kindergarten/role/create", { id: kindergartenId, name, color });
+  return fetchRoles(kindergartenId);
 }
 
-export async function deleteRoleOnServer(kindergartenId: number, roleId: number, prevById: Map<number, RoleDef>): Promise<RoleDef[]> {
+export async function renameRoleOnServer(
+  kindergartenId: number,
+  roleId: number,
+  name: string,
+  color: string,
+): Promise<RoleDef[]> {
+  await apiPost("/api/kindergarten/role/rename", { id: roleId, name, color });
+  return fetchRoles(kindergartenId);
+}
+
+export async function deleteRoleOnServer(kindergartenId: number, roleId: number): Promise<RoleDef[]> {
   await apiPost("/api/kindergarten/role/delete", { id: roleId });
-  return fetchRoles(kindergartenId, prevById);
+  return fetchRoles(kindergartenId);
 }
 
-// ---- Members (kindergarten/members) ----
 /**
- * 서버가 아는 교사 멤버십(반/역할/별칭)을 기존 목업 교사 목록에 병합합니다.
- * RelationshipDTO에는 이름이 없어서, 이미 알고 있는(id가 일치하는) 교사에게만
- * 반영합니다 — 목업에 없던 새 멤버는 이름을 알 길이 없어 추가하지 않습니다
- * (members 응답에 표시용 이름을 포함하도록 백엔드 개선이 필요합니다).
+ * 역할의 권한 묶음을 원하는 상태로 맞춥니다. 백엔드에는 개별 추가/삭제만 있어
+ * (`role/permission/add` / `remove`) 차이나는 것만 골라 호출합니다.
+ *
+ * ⚠️ 권한 편집은 원장(소유자)만 할 수 있습니다 — MANAGE_MEMBER 보유자에게 열어 주면
+ * 스스로에게 나머지 권한을 전부 부여할 수 있기 때문입니다.
  */
-export function mergeTeacherMemberships(teachers: TeacherRecord[], relationships: RelationshipDTO[]): TeacherRecord[] {
-  const byUserId = new Map(relationships.filter((r) => r.type === "TEACHER").map((r) => [r.userId, r]));
-  return teachers.map((t) => {
-    const rel = byUserId.get(t.id);
-    if (!rel) return t;
-    return {
-      ...t,
-      classId: rel.classId,
-      nickname: rel.nickname || t.nickname,
-      roleIds: rel.roleId ? [rel.roleId] : [],
-    };
-  });
+export async function setRolePermissionsOnServer(
+  kindergartenId: number,
+  roleId: number,
+  current: PermissionKey[],
+  next: PermissionKey[],
+): Promise<RoleDef[]> {
+  const added = next.filter((p) => !current.includes(p));
+  const removed = current.filter((p) => !next.includes(p));
+
+  await Promise.all([
+    ...added.map((p) => apiPost("/api/kindergarten/role/permission/add", { id: roleId, permission: toBackendPermission(p) })),
+    ...removed.map((p) => apiPost("/api/kindergarten/role/permission/remove", { id: roleId, permission: toBackendPermission(p) })),
+  ]);
+  return fetchRoles(kindergartenId);
+}
+
+// ---- Members ----
+/**
+ * 유치원의 교사 멤버를 서버 관계(RelationshipDTO)에서 그대로 만들어 냅니다.
+ * `userName`/`roleIds`가 응답에 들어 있으므로 목업 명단에 기대지 않습니다.
+ */
+export function toTeacherRecords(
+  relationships: RelationshipDTO[],
+  classes: ClassRecord[],
+  kindergarten: KindergartenRecord,
+): TeacherRecord[] {
+  const classNameById = new Map(classes.map((c) => [c.id, c.name]));
+  return relationships
+    .filter((r) => r.type === "TEACHER")
+    .map((r) => ({
+      id: r.userId,
+      name: r.userName ?? r.userId,
+      nickname: r.nickname || undefined,
+      classId: r.classId,
+      className: (r.classId !== undefined ? classNameById.get(r.classId) : undefined) ?? "유치원 소속",
+      kindergartenId: kindergarten.id,
+      kindergartenName: kindergarten.name,
+      // 레거시 단일 roleId만 내려오는 예전 데이터도 함께 받아 줍니다.
+      roleIds: r.roleIds ?? (r.roleId ? [r.roleId] : []),
+    }));
 }
 
 export async function fetchMembers(kindergartenId: number): Promise<RelationshipDTO[]> {
   return apiGet<RelationshipDTO[]>("/api/kindergarten/members", { id: kindergartenId });
 }
 
-export async function assignTeacherRoleOnServer(kindergartenId: number, teacherId: string, roleId: number): Promise<void> {
-  await apiPost("/api/kindergarten/assign", { id: kindergartenId, userId: teacherId, roleId });
+/**
+ * 멤버의 역할을 하나 붙이거나 뗍니다. 한 멤버가 역할을 여러 개 가질 수 있으므로
+ * 단일 칼럼을 덮어쓰는 `assign` 대신 집합에 더하고 빼는 `role/assign` / `role/unassign`을 씁니다.
+ */
+export async function setTeacherRoleOnServer(
+  kindergartenId: number,
+  teacherId: string,
+  roleId: number,
+  assigned: boolean,
+): Promise<void> {
+  const path = assigned ? "/api/kindergarten/role/assign" : "/api/kindergarten/role/unassign";
+  await apiPost(path, { id: kindergartenId, userId: teacherId, roleId });
 }
 
 export async function setTeacherNicknameOnServer(kindergartenId: number, teacherId: string, nickname: string): Promise<void> {
@@ -314,23 +420,54 @@ export async function removeTeacherOnServer(kindergartenId: number, teacherId: s
   await apiPost("/api/kindergarten/remove", { id: kindergartenId, userId: teacherId });
 }
 
-export interface KindergartenDTO {
-  id: number;
-  name: string;
-  brn: string;
-  address: string;
-  addressDetail: string;
-  postcode: string;
-}
-
-export async function fetchMemberships(): Promise<{ kindergartenId: number; kindergartenName: string }[]> {
-  const list = await apiGet<RelationshipDTO[]>("/api/kindergarten/memberships");
-  return list.map((r) => ({ kindergartenId: r.kindergartenId, kindergartenName: r.kindergartenName }));
-}
-
+// ---- Kindergarten / memberships ----
 export function mapKindergarten(dto: KindergartenDTO): KindergartenRecord {
   return { id: dto.id, name: dto.name };
 }
 
-// re-exported so callers only need to import from this module for role/permission labels
+/** 로그인한 사람이 속한 유치원 관계 전체입니다. 워크스페이스 목록의 원본입니다. */
+export async function fetchMemberships(): Promise<RelationshipDTO[]> {
+  return apiGet<RelationshipDTO[]>("/api/kindergarten/memberships");
+}
+
+export async function fetchKindergarten(id: number): Promise<KindergartenDTO> {
+  return apiGet<KindergartenDTO>("/api/kindergarten/info", { id });
+}
+
+/** 이름으로 유치원을 찾습니다. 필터는 서버가 합니다(`list?q=`). */
+export async function searchKindergartensOnServer(q: string): Promise<KindergartenDTO[]> {
+  return apiGet<KindergartenDTO[]>("/api/kindergarten/list", { q });
+}
+
+// ---- Invites ----
+export async function fetchSentInvites(kindergartenId: number): Promise<InviteDTO[]> {
+  return apiGet<InviteDTO[]>("/api/kindergarten/invite/list", { kindergartenId });
+}
+
+/** 로그인한 사람 앞으로 온 초대입니다. `kindergartenName`이 함께 와서 별도 조회가 필요 없습니다. */
+export async function fetchReceivedInvites(): Promise<InviteDTO[]> {
+  return apiGet<InviteDTO[]>("/api/user/invite/list");
+}
+
+export async function sendInviteOnServer(
+  kindergartenId: number,
+  userId: string,
+  type: "TEACHER" | "CHILD",
+  roleId?: number,
+): Promise<void> {
+  await apiPost("/api/kindergarten/invite", { id: kindergartenId, userId, type, roleId });
+}
+
+export async function cancelInviteOnServer(inviteId: number): Promise<void> {
+  await apiPost("/api/kindergarten/invite/cancel", { id: inviteId });
+}
+
+export async function acceptInviteOnServer(inviteId: number): Promise<void> {
+  await apiPost("/api/kindergarten/invite/accept", { id: inviteId });
+}
+
+export async function rejectInviteOnServer(inviteId: number): Promise<void> {
+  await apiPost("/api/kindergarten/invite/reject", { id: inviteId });
+}
+
 export type { PermissionKey };

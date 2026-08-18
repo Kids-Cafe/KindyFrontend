@@ -3,6 +3,7 @@ import { MiniStar, KioSVG, KinaSVG } from "@/app/components/decorative";
 import { useAuth } from "@/app/auth/AuthContext";
 import type { AuthUser, TeacherRole, UserRole } from "@/app/auth/types";
 import { registerKindergarten } from "@/app/auth/signup";
+import { apiPost } from "@/app/lib/api";
 import { ReceivedInvites } from "@/app/auth/ReceivedInvites";
 import { RoleStep } from "@/app/sections/onboarding/steps/RoleStep";
 import { NicknameStep } from "@/app/sections/onboarding/steps/NicknameStep";
@@ -51,27 +52,22 @@ export function OnboardingWizard({ onComplete }: { onComplete: () => void }) {
     updateProfile({ ...partial, onboardingCompleted: true });
 
     const kindergartenId = partial.kindergarten?.id;
-    if (join && kindergartenId && kindergartenId > 0) {
-      await fetch("/api/kindergarten/join", {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        credentials: "include",
-        body: new URLSearchParams({ id: String(kindergartenId), type: join.type }),
-      }).catch(() => {});
-    }
-    if (partial.nickname && kindergartenId && kindergartenId > 0) {
-      await fetch("/api/kindergarten/setNickname", {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        credentials: "include",
-        body: new URLSearchParams({ id: String(kindergartenId), userId: user!.id, nickname: partial.nickname }),
-      }).catch(() => {});
+    if (kindergartenId && kindergartenId > 0) {
+      if (join) {
+        // 가입은 곧바로 멤버가 되는 게 아니라 "가입 요청"을 남깁니다.
+        // 원장이 수락해야 관계가 생기므로, 여기서 별칭까지 정해 줄 수는 없습니다.
+        await apiPost("/api/kindergarten/join", { id: kindergartenId, type: join.type }).catch(() => {});
+      } else if (partial.nickname) {
+        // 방금 유치원을 만든 원장은 이미 소유자로 등록돼 있어 별칭을 바로 지을 수 있습니다.
+        await apiPost("/api/kindergarten/setNickname", {
+          id: kindergartenId,
+          userId: user!.id,
+          nickname: partial.nickname,
+        }).catch(() => {});
+      }
     }
 
-    await fetch("/api/user/onboarding/complete", {
-        method: "POST",
-        credentials: "include"
-    });
+    await apiPost("/api/user/onboarding/complete").catch(() => {});
     onComplete();
   }
 

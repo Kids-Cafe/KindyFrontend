@@ -22,22 +22,26 @@ export interface ClassRecord {
   kindergartenId: number;
 }
 
-/** 디스코드의 "역할(role)"과 동일한 개념의 권한 플래그입니다. 원장이 교사 계정에 배정합니다. */
+/**
+ * 디스코드의 "역할(role)"과 동일한 개념의 권한 플래그입니다. 원장이 교사 계정에 배정합니다.
+ * 백엔드 `RoleDTO.Permission`과 1:1로 대응합니다(`@/app/lib/permissions`).
+ *
+ * 사진첩은 별도 권한이 아니라 반 관리(`manageClasses`)에 딸려 있습니다 —
+ * 서버의 `class/photo/*`가 MANAGE_CLASS로 검사하기 때문입니다.
+ */
 export type PermissionKey =
   | "manageNotices"
   | "manageClasses"
   | "manageMembers"
   | "manageSchedule"
-  | "manageSupplies"
-  | "managePhotos";
+  | "manageSupplies";
 
 export const PERMISSION_LABELS: Record<PermissionKey, string> = {
   manageNotices: "공지사항 관리",
-  manageClasses: "반 관리",
+  manageClasses: "반·사진첩 관리",
   manageMembers: "멤버 및 권한 관리",
   manageSchedule: "일정 관리 (전체 반)",
   manageSupplies: "준비물 작성",
-  managePhotos: "사진첩 관리 (전체 반)",
 };
 
 /** 원장이 만들고 교사 계정에 배정하는 권한 묶음입니다. */
@@ -48,21 +52,28 @@ export interface RoleDef {
   permissions: PermissionKey[];
 }
 
+/**
+ * 유치원에 등록된 아이 한 명입니다. 서버의 `RelationshipDTO`(type=CHILD)에서 만들어집니다.
+ *
+ * 관계 응답에 없는 값은 선택 필드입니다 — 나이·성별은 아이 계정의 프로필에만 있고
+ * (`user/info`는 본인 것만 내려줍니다), 부모는 `user/family/list`로 따로 이어 붙입니다.
+ * 아바타는 표시용이라 서버에 저장하지 않고 아이디에서 결정적으로 만들어 씁니다.
+ */
 export interface ChildRecord {
   id: string;
   /** 실명 */
   name: string;
   /** 별명/애칭 (아이·부모·선생님 화면에 실제로 표시되는 이름) */
   nickname: string;
-  age: number;
-  gender: "male" | "female";
+  age?: number;
+  gender?: "male" | "female";
   classId: number;
   className: string;
   kindergartenId: number;
   kindergartenName: string;
-  parentId: string;
-  parentName: string;
-  teacherId: string;
+  parentId?: string;
+  parentName?: string;
+  teacherId?: string;
   aiPartner: AIPartnerId | null;
   avatarEmoji: string;
   avatarColor: string;
@@ -92,12 +103,14 @@ export type MoodTag = "happy" | "excited" | "calm" | "sad" | "upset";
 export interface DiaryEntry {
   id: number;
   childId: string;
-  /** YYYY-MM-DD */
+  /** YYYY-MM-DD. 사용자당 날짜 하나가 곧 일기 하나입니다(서버의 사실상 기본키). */
   date: string;
   mood: MoodTag;
   title: string;
-  /** AI 파트너와의 대화를 바탕으로 생성된 일기 본문입니다. */
+  /** 카드에 보여주는 AI 요약입니다. */
   summary: string;
+  /** 일기 본문 전체입니다. 요약만 있는 예전 글에는 없습니다. */
+  text?: string;
   tags: string[];
 }
 
