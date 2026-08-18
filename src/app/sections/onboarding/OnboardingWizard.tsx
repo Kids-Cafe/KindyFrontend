@@ -2,7 +2,7 @@ import { useState } from "react";
 import { MiniStar, KioSVG, KinaSVG } from "@/app/components/decorative";
 import { useAuth } from "@/app/auth/AuthContext";
 import type { AuthUser, TeacherRole, UserRole } from "@/app/auth/types";
-import { registerKindergarten } from "@/app/auth/mockSignup";
+import { registerKindergarten } from "@/app/auth/signup";
 import { ReceivedInvites } from "@/app/auth/ReceivedInvites";
 import { RoleStep } from "@/app/sections/onboarding/steps/RoleStep";
 import { NicknameStep } from "@/app/sections/onboarding/steps/NicknameStep";
@@ -45,7 +45,10 @@ export function OnboardingWizard({ onComplete }: { onComplete: () => void }) {
 
   function finish(partial: Partial<AuthUser>) {
     updateProfile({ ...partial, onboardingCompleted: true });
-    onComplete();
+    fetch("/api/user/onboarding/complete", {
+        method: "POST",
+        credentials: "include"
+    }).then(onComplete);
   }
 
   return (

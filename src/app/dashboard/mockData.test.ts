@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { AuthUser } from "@/app/auth/types";
-import { buildDashboardData, resolveDashboardRole } from "@/app/dashboard/mockData";
+import { buildDashboardData, resolveDashboardRole } from "@/app/dashboard/retrieveData.ts";
 
 const KINDERGARTEN = {
   id: "kg-seed-1",

@@ -12,14 +12,14 @@ export type DashboardRole = "child" | "parent" | "teacher" | "director";
 export type AIPartnerId = "kio" | "kina";
 
 export interface KindergartenRecord {
-  id: string;
+  id: number;
   name: string;
 }
 
 export interface ClassRecord {
-  id: string;
+  id: number;
   name: string;
-  kindergartenId: string;
+  kindergartenId: number;
 }
 
 /** 디스코드의 "역할(role)"과 동일한 개념의 권한 플래그입니다. 원장이 교사 계정에 배정합니다. */
@@ -42,7 +42,7 @@ export const PERMISSION_LABELS: Record<PermissionKey, string> = {
 
 /** 원장이 만들고 교사 계정에 배정하는 권한 묶음입니다. */
 export interface RoleDef {
-  id: string;
+  id: number;
   name: string;
   color: string;
   permissions: PermissionKey[];
@@ -56,9 +56,9 @@ export interface ChildRecord {
   nickname: string;
   age: number;
   gender: "male" | "female";
-  classId: string;
+  classId: number;
   className: string;
-  kindergartenId: string;
+  kindergartenId: number;
   kindergartenName: string;
   parentId: string;
   parentName: string;
@@ -79,18 +79,18 @@ export interface TeacherRecord {
   name: string;
   /** 원장이 멤버 프로필 패널에서 지어줄 수 있는 별칭입니다. 없으면 실명(name)이 그대로 표시됩니다. */
   nickname?: string;
-  classId: string;
+  classId?: number;
   className: string;
-  kindergartenId: string;
+  kindergartenId: number;
   kindergartenName: string;
   /** 원장이 배정한 권한 역할 목록입니다(디스코드식). 원장 본인은 별도 표기 없이 전권을 가집니다. */
-  roleIds: string[];
+  roleIds: number[];
 }
 
 export type MoodTag = "happy" | "excited" | "calm" | "sad" | "upset";
 
 export interface DiaryEntry {
-  id: string;
+  id: number;
   childId: string;
   /** YYYY-MM-DD */
   date: string;
@@ -154,7 +154,7 @@ export type ChatSender = "child" | "parent" | "teacher" | "ai" | "director";
 export type DataCardType = ReportCategory;
 
 export interface ChatMessage {
-  id: string;
+  id: number;
   sender: ChatSender;
   senderName: string;
   kind: "text" | "data-card";
@@ -166,7 +166,7 @@ export interface ChatMessage {
 
 /** 부모 ↔ 선생님 채팅 스레드입니다. 아이 1명당 1개입니다. */
 export interface ChatThread {
-  id: string;
+  id: number;
   childId: string;
   childNickname: string;
   parentId: string;
@@ -184,7 +184,7 @@ export interface AiChatThread {
 
 /** 원장 ↔ 교사 1:1 대화입니다(멤버 프로필 패널의 "메시지 보내기"). 교사 1명당 1개입니다. */
 export interface MemberChatThread {
-  id: string;
+  id: number;
   teacherId: string;
   teacherName: string;
   directorName: string;
@@ -193,8 +193,8 @@ export interface MemberChatThread {
 
 /** 유치원 공지사항입니다. 원장만 작성/수정/고정/삭제할 수 있고, 나머지 역할은 읽기 전용입니다. */
 export interface NoticeRecord {
-  id: string;
-  kindergartenId: string;
+  id: number;
+  kindergartenId: number;
   title: string;
   body: string;
   authorName: string;
@@ -206,7 +206,7 @@ export interface NoticeRecord {
 }
 
 export interface SupplyComment {
-  id: string;
+  id: number;
   authorName: string;
   authorRole: DashboardRole;
   text: string;
@@ -216,8 +216,8 @@ export interface SupplyComment {
 
 /** 반별 준비물 안내입니다. 선생님/원장이 작성하고 같은 반 학부모 전원이 열람·댓글 가능합니다. */
 export interface SupplyItem {
-  id: string;
-  classId: string;
+  id: number;
+  classId: number;
   title: string;
   body: string;
   authorName: string;
@@ -229,9 +229,9 @@ export interface SupplyItem {
 
 /** 선생님/원장이 등록하는 일정입니다. classId가 없으면 유치원 전체 대상입니다. */
 export interface ScheduleEvent {
-  id: string;
-  kindergartenId: string;
-  classId?: string;
+  id: number;
+  kindergartenId: number;
+  classId?: number;
   title: string;
   /** YYYY-MM-DD */
   date: string;
@@ -241,18 +241,13 @@ export interface ScheduleEvent {
   createdAt: number;
 }
 
-/** 사진첩은 반 단위로 나뉩니다. 원장은 모든 반을, 학부모/아이는 자기 반만 봅니다. */
-export type PhotoScope = "class";
-
 /** 사진 카드를 감싸는 장식 테마입니다. 업로더가 사진별로 지정합니다. */
 export type PhotoThemeId = "clip" | "polaroid" | "frame-wood" | "frame-gold";
 
 /** 사진첩 한 장입니다. data URL 또는 object URL을 그대로 저장합니다(목업이라 서버 업로드 없음). */
 export interface PhotoRecord {
-  id: string;
-  scope: PhotoScope;
-  /** scope가 "class"이므로 소속 반(classId)을 가리킵니다. */
-  scopeId: string;
+  id: number;
+  classId: number;
   url: string;
   caption?: string;
   uploadedBy: string;
@@ -263,7 +258,7 @@ export interface PhotoRecord {
 
 /** 선생님이 남긴 글에 부모(또는 선생님 본인)가 다는 답글입니다. */
 export interface ParentNoteComment {
-  id: string;
+  id: number;
   authorName: string;
   authorRole: DashboardRole;
   text: string;
@@ -273,7 +268,7 @@ export interface ParentNoteComment {
 
 /** 선생님이 특정 아이에 대해 남기는, 그 아이의 부모만 볼 수 있는 게시글/의견입니다. */
 export interface ParentNote {
-  id: string;
+  id: number;
   childId: string;
   authorName: string;
   text: string;

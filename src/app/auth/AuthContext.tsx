@@ -97,12 +97,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
       const r = await f.json();
       if (r.status != "success") {
-        setError(
-            r.code === "crypto-unavailable"
-                ? "보안 연결(HTTPS)에서만 로그인할 수 있어요. 주소를 확인해주세요."
-                : // 아이디 존재 여부가 드러나지 않도록 나머지는 같은 문구를 보여줍니다.
-                "아이디 또는 비밀번호가 올바르지 않아요.",
-        );
+        switch (r.code) {
+          case "UNKNOWN_ERROR":
+            setError("알 수 없는 오류가 발생했습니다.");
+            break;
+          default:
+            setError("아이디 또는 비밀번호가 올바르지 않아요.");
+        }
         return false;
       }
 
@@ -113,7 +114,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const t = await q.json();
 
-      if (t.status != "success" || !t.data) return false;
+      if (t.status != "success" || !t.data) {
+        switch (t.code) {
+          default:
+            setError("알 수 없는 오류가 발생했습니다.");
+        }
+        return false;
+      }
 
       const user: AuthUser = {
         id: t.data.id,
@@ -122,16 +129,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         email: t.data.email,
         provider: "email",
         joinedAt: t.data.createdAt,
-        // accountType: record.accountType,
+        accountType: t.data.accountType?.toLowerCase(),
         // birthDate: record.birthDate,
         // gender: record.gender,
-        // guardianName: record.guardianName,
-        // guardianPhone: record.guardianPhone,
+        guardianName: t.data.guardianName,
+        guardianPhone: t.data.guardianPhone,
         // nickname: record.nickname,
         // role: record.role,
         // teacherRole: record.teacherRole,
         // kindergarten: record.kindergarten,
-        // onboardingCompleted: record.onboardingCompleted
+        onboardingCompleted: t.data.onboardingCompleted
       };
       setSession({ user: user, accessToken: newId(), expiresAt: Date.now() + SESSION_TTL_MS });
       return true;

@@ -1,4 +1,5 @@
 import type { PhotoRecord, PhotoThemeId } from "@/app/dashboard/types";
+import {newId} from "@/app/lib/id.ts";
 
 const NOW = 1785300000000;
 
@@ -12,7 +13,7 @@ function placeholder(emoji: string, bg: string): string {
  * 반별 사진첩 목업입니다. `classIds`에 담긴 반마다 사진을 돌아가며 배정하고,
  * 테마도 네 가지를 골고루 섞어 반마다 다른 분위기가 나도록 합니다.
  */
-export function buildPhotos(classIds: string[]): PhotoRecord[] {
+export function buildPhotos(classIds: number[]): PhotoRecord[] {
   if (classIds.length === 0) return [];
 
   const themes: PhotoThemeId[] = ["clip", "polaroid", "frame-wood", "frame-gold"];
@@ -28,9 +29,8 @@ export function buildPhotos(classIds: string[]): PhotoRecord[] {
   ];
 
   return seeds.map((s, i) => ({
-    id: `photo-${i + 1}`,
-    scope: "class" as const,
-    scopeId: classIds[i % classIds.length],
+    id: newId(),
+    classId: classIds[i % classIds.length],
     url: placeholder(s.emoji, s.bg),
     caption: s.caption,
     uploadedBy: s.uploadedBy,

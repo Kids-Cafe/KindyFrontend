@@ -11,13 +11,6 @@
  * 없으면 충돌하지 않을 정도의 값으로 대체합니다.
  */
 
-let counter = 0;
-
-export function newId(): string {
-  const uuid = globalThis.crypto?.randomUUID?.();
-  if (uuid) return uuid;
-
-  // 같은 밀리초에 여러 개가 만들어져도 겹치지 않도록 증가 카운터를 함께 씁니다.
-  counter += 1;
-  return `id-${Date.now().toString(36)}-${counter.toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+export function newId(): number {
+  return -Date.now() - Math.random();
 }

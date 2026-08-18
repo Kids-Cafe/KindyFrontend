@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { isValidBusinessRegNo } from "@/app/auth/validation";
 import { openAddressSearch } from "@/app/auth/addressSearch";
-import type { KindergartenRegisterPayload } from "@/app/auth/mockSignup";
+import type { KindergartenRegisterPayload } from "@/app/auth/signup";
 
 const inputStyle = { height: 54, border: "1.5px solid #E5E7EB", background: "#FAFAFA", color: "#1F0A3C" } as const;
 

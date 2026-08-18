@@ -206,7 +206,7 @@ export function resolveDashboardRole(user: AuthUser): DashboardData["role"] {
 export function buildDashboardData(user: AuthUser, roleOverride?: DashboardData["role"]): DashboardData {
   const displayName = getDisplayName(user);
   const kindergartenName = user.kindergarten?.name ?? "새싹유치원";
-  const kindergartenId = user.kindergarten?.id ?? "kg-mock";
+  const kindergartenId = user.kindergarten?.id ?? 101;
 
   const role: DashboardData["role"] = roleOverride ?? resolveDashboardRole(user);
 
@@ -352,7 +352,7 @@ function buildParentNotes(child: ChildRecord, teacher: TeacherRecord): ParentNot
 }
 
 /** "타 유치원" 데모 워크스페이스의 유치원 정보입니다. 원장도 자기 유치원 밖에서는 학부모일 수 있다는 걸 보여줍니다. */
-export const ALT_KINDERGARTEN = { id: "kg-alt-demo", name: "반짝반짝유치원" };
+export const ALT_KINDERGARTEN = { id: -5, name: "반짝반짝유치원" };
 
 const ALT_CLASSMATES: Omit<ChildRecord, "kindergartenId" | "kindergartenName" | "teacherId">[] = [
   { id: "alt-child-2", name: "우도현", nickname: "도현이", age: 6, gender: "male", classId: "alt-class-1", className: "민들레반", parentId: "alt-parent-2", parentName: "우도현 부모님", aiPartner: "kio", avatarEmoji: "🐥", avatarColor: "#FDE047" },

@@ -1,8 +1,8 @@
-import { createContext, useCallback, useContext, useMemo, useState } from "react";
+import {createContext, useCallback, useContext, useEffect, useMemo, useState} from "react";
 import type { ReactNode } from "react";
 import { useAuth } from "@/app/auth/AuthContext";
 import { isAllRolesDemoUser } from "@/app/auth/mockSignup";
-import { buildAltDashboardData, buildDashboardData } from "@/app/dashboard/mockData";
+import { buildDashboardData, buildAltDashboardData } from "@/app/dashboard/retrieveData.ts";
 import { revokeAcceptedInvite, updateAcceptedInviteRoles } from "@/app/dashboard/mock/membershipInvites";
 import type {
   AIPartnerId,
@@ -84,42 +84,42 @@ interface DashboardStoreValue {
 
   /** 원장 전용: 공지사항 CRUD. */
   addNotice: (title: string, body: string, authorName: string, bannerEnabled?: boolean) => void;
-  togglePinNotice: (noticeId: string) => void;
-  toggleNoticeBanner: (noticeId: string) => void;
-  deleteNotice: (noticeId: string) => void;
+  togglePinNotice: (noticeId: number) => void;
+  toggleNoticeBanner: (noticeId: number) => void;
+  deleteNotice: (noticeId: number) => void;
 
   /** 원장 전용: 반 CRUD. */
   addClass: (name: string) => void;
-  renameClass: (classId: string, name: string) => void;
-  deleteClass: (classId: string) => void;
+  renameClass: (classId: number, name: string) => void;
+  deleteClass: (classId: number) => void;
 
   /** 원장 전용: 권한 역할 관리. */
   createRole: (name: string, color: string) => void;
-  updateRolePermissions: (roleId: string, permissions: PermissionKey[]) => void;
-  deleteRole: (roleId: string) => void;
-  assignTeacherRole: (teacherId: string, roleId: string, assigned: boolean) => void;
+  updateRolePermissions: (roleId: number, permissions: PermissionKey[]) => void;
+  deleteRole: (roleId: number) => void;
+  assignTeacherRole: (teacherId: string, roleId: number, assigned: boolean) => void;
   /** 원장 전용: 초대를 수락한 교사를 유치원 멤버에서 내보냅니다. */
   removeTeacherMembership: (teacherId: string) => void;
 
   /** 선생님/원장: 준비물 작성. 학부모: 댓글. */
-  addSupplyItem: (classId: string, title: string, body: string, authorName: string, dueDate?: string) => void;
-  addSupplyComment: (classId: string, supplyId: string, authorName: string, authorRole: DashboardData["role"], text: string) => void;
+  addSupplyItem: (classId: number, title: string, body: string, authorName: string, dueDate?: string) => void;
+  addSupplyComment: (classId: number, supplyId: number, authorName: string, authorRole: DashboardData["role"], text: string) => void;
 
   /** 선생님/원장: 일정 등록. */
-  addScheduleEvent: (title: string, date: string, time: string | undefined, createdBy: string, classId?: string) => void;
-  updateScheduleEvent: (eventId: string, title: string, date: string, time: string | undefined, classId?: string) => void;
-  deleteScheduleEvent: (eventId: string) => void;
+  addScheduleEvent: (title: string, date: string, time: string | undefined, createdBy: string, classId?: number) => void;
+  updateScheduleEvent: (eventId: number, title: string, date: string, time: string | undefined, classId?: number) => void;
+  deleteScheduleEvent: (eventId: number) => void;
 
   /** 사진첩: 반 단위로 나뉩니다. 등록·수정·삭제 권한은 화면(PhotoAlbumFeature)에서 판단합니다. */
-  addPhoto: (url: string, uploadedBy: string, classId: string, theme: PhotoThemeId, caption?: string) => void;
+  addPhoto: (url: string, uploadedBy: string, classId: number, theme: PhotoThemeId, caption?: string) => void;
   /** 사진 카드를 감싸는 장식 테마를 바꿉니다. */
-  updatePhotoTheme: (photoId: string, theme: PhotoThemeId) => void;
-  deletePhoto: (photoId: string) => void;
+  updatePhotoTheme: (photoId: number, theme: PhotoThemeId) => void;
+  deletePhoto: (photoId: number) => void;
 
   /** 선생님 전용: 특정 아이의 "부모 전용" 게시글 작성. */
   addParentNote: (childId: string, authorName: string, text: string) => void;
   /** 학부모/원장: 선생님이 남긴 글에 답글을 답니다. */
-  addParentNoteComment: (childId: string, noteId: string, authorName: string, authorRole: DashboardData["role"], text: string) => void;
+  addParentNoteComment: (childId: string, noteId: number, authorName: string, authorRole: DashboardData["role"], text: string) => void;
 
   /** 마이페이지 "아이 정보 변경"에서 씁니다. */
   updateChildNickname: (childId: string, nickname: string) => void;
@@ -154,6 +154,20 @@ export function DashboardStoreProvider({ children }: { children: ReactNode }) {
     if (home.role === "director") initial.alt = buildAltDashboardData(user!);
     return initial;
   });
+
+  useEffect(() => {
+    fetch("/api/kindergarten/memberships", {
+      method: "GET",
+      credentials: "include"
+    }).then(r => r.json()).then(r => {
+      if (r.status != "success") return;
+      const t = r.data.map((d: any) => [newId(), buildDashboardData({...user!, kindergarten: {id: d.kindergartenId, name: d.kindergartenName}}, "director")])
+      if (!t.length) return;
+      setDataByWorkspace(Object.fromEntries(t));
+      setActiveWorkspaceId(t[0][0]);
+    })
+  }, [])
+
   const [activeWorkspaceId, setActiveWorkspaceId] = useState(() =>
     isAllRolesDemo ? DEMO_ROLE_WORKSPACES[0].id : "home",
   );
@@ -213,7 +227,7 @@ export function DashboardStoreProvider({ children }: { children: ReactNode }) {
             childId,
             messages: [
               {
-                id: `${childId}-ai-welcome`,
+                id: -1,
                 sender: "ai",
                 senderName: partnerName,
                 kind: "text",
@@ -311,31 +325,44 @@ export function DashboardStoreProvider({ children }: { children: ReactNode }) {
     });
   }, [setData]);
 
-  const addNotice = useCallback((title: string, body: string, authorName: string, bannerEnabled = false) => {
+  const addNotice = useCallback(async (title: string, body: string, authorName: string, bannerEnabled = false) => {
+    const p = new URLSearchParams();
+    p.set("kindergartenId", String(data.kindergarten.id))
+    p.set("title", title);
+    p.set("content", body);
+    p.set("pinned", "false");
+    const f = await fetch('/api/kindergarten/notice/create', {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      credentials: 'include',
+      body: p
+    });
     setData((prev) => ({
       ...prev,
       notices: [
-        { id: newId(), kindergartenId: prev.kindergarten.id, title, body, authorName, createdAt: Date.now(), pinned: false, bannerEnabled },
+        { id: Math.random(), kindergartenId: prev.kindergarten.id, title, body, authorName, createdAt: Date.now(), pinned: false, bannerEnabled },
         ...prev.notices,
       ],
     }));
   }, [setData]);
 
-  const togglePinNotice = useCallback((noticeId: string) => {
+  const togglePinNotice = useCallback((noticeId: number) => {
     setData((prev) => ({
       ...prev,
       notices: prev.notices.map((n) => (n.id === noticeId ? { ...n, pinned: !n.pinned } : n)),
     }));
   }, [setData]);
 
-  const toggleNoticeBanner = useCallback((noticeId: string) => {
+  const toggleNoticeBanner = useCallback((noticeId: number) => {
     setData((prev) => ({
       ...prev,
       notices: prev.notices.map((n) => (n.id === noticeId ? { ...n, bannerEnabled: !n.bannerEnabled } : n)),
     }));
   }, [setData]);
 
-  const deleteNotice = useCallback((noticeId: string) => {
+  const deleteNotice = useCallback((noticeId: number) => {
     setData((prev) => ({ ...prev, notices: prev.notices.filter((n) => n.id !== noticeId) }));
   }, [setData]);
 
@@ -346,14 +373,14 @@ export function DashboardStoreProvider({ children }: { children: ReactNode }) {
     }));
   }, [setData]);
 
-  const renameClass = useCallback((classId: string, name: string) => {
+  const renameClass = useCallback((classId: number, name: string) => {
     setData((prev) => ({
       ...prev,
       classes: prev.classes.map((c) => (c.id === classId ? { ...c, name } : c)),
     }));
   }, [setData]);
 
-  const deleteClass = useCallback((classId: string) => {
+  const deleteClass = useCallback((classId: number) => {
     setData((prev) => ({ ...prev, classes: prev.classes.filter((c) => c.id !== classId) }));
   }, [setData]);
 
@@ -364,14 +391,14 @@ export function DashboardStoreProvider({ children }: { children: ReactNode }) {
     }));
   }, [setData]);
 
-  const updateRolePermissions = useCallback((roleId: string, permissions: PermissionKey[]) => {
+  const updateRolePermissions = useCallback((roleId: number, permissions: PermissionKey[]) => {
     setData((prev) => ({
       ...prev,
       roles: prev.roles.map((r) => (r.id === roleId ? { ...r, permissions } : r)),
     }));
   }, [setData]);
 
-  const deleteRole = useCallback((roleId: string) => {
+  const deleteRole = useCallback((roleId: number) => {
     setData((prev) => ({
       ...prev,
       roles: prev.roles.filter((r) => r.id !== roleId),
@@ -379,7 +406,7 @@ export function DashboardStoreProvider({ children }: { children: ReactNode }) {
     }));
   }, [setData]);
 
-  const assignTeacherRole = useCallback((teacherId: string, roleId: string, assigned: boolean) => {
+  const assignTeacherRole = useCallback((teacherId: string, roleId: number, assigned: boolean) => {
     setData((prev) => {
       const nextTeachers = prev.teachers.map((t) =>
         t.id !== teacherId
@@ -401,7 +428,7 @@ export function DashboardStoreProvider({ children }: { children: ReactNode }) {
     });
   }, [setData]);
 
-  const addSupplyItem = useCallback((classId: string, title: string, body: string, authorName: string, dueDate?: string) => {
+  const addSupplyItem = useCallback((classId: number, title: string, body: string, authorName: string, dueDate?: string) => {
     setData((prev) => {
       const list = prev.suppliesByClass[classId] ?? [];
       const item = { id: newId(), classId, title, body, authorName, createdAt: Date.now(), dueDate, comments: [] };
@@ -409,7 +436,7 @@ export function DashboardStoreProvider({ children }: { children: ReactNode }) {
     });
   }, [setData]);
 
-  const addSupplyComment = useCallback((classId: string, supplyId: string, authorName: string, authorRole: DashboardData["role"], text: string) => {
+  const addSupplyComment = useCallback((classId: number, supplyId: number, authorName: string, authorRole: DashboardData["role"], text: string) => {
     const trimmed = text.trim();
     if (!trimmed) return;
     setData((prev) => {
@@ -428,7 +455,7 @@ export function DashboardStoreProvider({ children }: { children: ReactNode }) {
     });
   }, [setData]);
 
-  const addScheduleEvent = useCallback((title: string, date: string, time: string | undefined, createdBy: string, classId?: string) => {
+  const addScheduleEvent = useCallback((title: string, date: string, time: string | undefined, createdBy: string, classId?: number) => {
     setData((prev) => ({
       ...prev,
       scheduleEvents: [
@@ -438,32 +465,32 @@ export function DashboardStoreProvider({ children }: { children: ReactNode }) {
     }));
   }, [setData]);
 
-  const updateScheduleEvent = useCallback((eventId: string, title: string, date: string, time: string | undefined, classId?: string) => {
+  const updateScheduleEvent = useCallback((eventId: number, title: string, date: string, time: string | undefined, classId?: number) => {
     setData((prev) => ({
       ...prev,
       scheduleEvents: prev.scheduleEvents.map((e) => (e.id === eventId ? { ...e, title, date, time, classId } : e)),
     }));
   }, [setData]);
 
-  const deleteScheduleEvent = useCallback((eventId: string) => {
+  const deleteScheduleEvent = useCallback((eventId: number) => {
     setData((prev) => ({ ...prev, scheduleEvents: prev.scheduleEvents.filter((e) => e.id !== eventId) }));
   }, [setData]);
 
-  const addPhoto = useCallback((url: string, uploadedBy: string, classId: string, theme: PhotoThemeId, caption?: string) => {
+  const addPhoto = useCallback((url: string, uploadedBy: string, classId: number, theme: PhotoThemeId, caption?: string) => {
     setData((prev) => ({
       ...prev,
-      photos: [{ id: newId(), scope: "class", scopeId: classId, url, caption, uploadedBy, theme, takenAt: Date.now() }, ...prev.photos],
+      photos: [{ id: newId(), classId: classId, url, caption, uploadedBy, theme, takenAt: Date.now() }, ...prev.photos],
     }));
   }, [setData]);
 
-  const updatePhotoTheme = useCallback((photoId: string, theme: PhotoThemeId) => {
+  const updatePhotoTheme = useCallback((photoId: number, theme: PhotoThemeId) => {
     setData((prev) => ({
       ...prev,
       photos: prev.photos.map((p) => (p.id === photoId ? { ...p, theme } : p)),
     }));
   }, [setData]);
 
-  const deletePhoto = useCallback((photoId: string) => {
+  const deletePhoto = useCallback((photoId: number) => {
     setData((prev) => ({ ...prev, photos: prev.photos.filter((p) => p.id !== photoId) }));
   }, [setData]);
 
@@ -483,7 +510,7 @@ export function DashboardStoreProvider({ children }: { children: ReactNode }) {
   }, [setData]);
 
   const addParentNoteComment = useCallback(
-    (childId: string, noteId: string, authorName: string, authorRole: DashboardData["role"], text: string) => {
+    (childId: string, noteId: number, authorName: string, authorRole: DashboardData["role"], text: string) => {
       const trimmed = text.trim();
       if (!trimmed) return;
       setData((prev) => {

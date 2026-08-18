@@ -11,17 +11,17 @@ export type InviteTargetRole = "teacher" | "parent" | "child";
 export type InviteStatus = "pending" | "accepted" | "rejected";
 
 export interface MembershipInvite {
-  id: string;
-  kindergartenId: string;
+  id: number;
+  kindergartenId: number;
   kindergartenName: string;
   targetUserId: string;
   targetLoginId: string;
   targetName: string;
   role: InviteTargetRole;
   /** 선생님 초대에서만 씁니다. */
-  classId?: string;
+  classId?: number;
   className?: string;
-  roleIds?: string[];
+  roleIds?: number[];
   status: InviteStatus;
   invitedByName: string;
   createdAt: number;
@@ -48,7 +48,7 @@ function writeInvites(list: MembershipInvite[]): void {
 }
 
 /** 원장이 이 유치원에서 보낸 초대 전체(대기/수락/거절 모두)입니다. "초대 목록" 화면에 씁니다. */
-export function listInvitesSentByKindergarten(kindergartenId: string): MembershipInvite[] {
+export function listInvitesSentByKindergarten(kindergartenId: number): MembershipInvite[] {
   return readInvites()
     .filter((i) => i.kindergartenId === kindergartenId)
     .sort((a, b) => b.createdAt - a.createdAt);
@@ -62,15 +62,15 @@ export function listInvitesForTarget(userId: string): MembershipInvite[] {
 }
 
 export interface CreateInvitePayload {
-  kindergartenId: string;
+  kindergartenId: number;
   kindergartenName: string;
   targetUserId: string;
   targetLoginId: string;
   targetName: string;
   role: InviteTargetRole;
-  classId?: string;
+  classId?: number;
   className?: string;
-  roleIds?: string[];
+  roleIds?: number[];
   invitedByName: string;
 }
 
@@ -86,16 +86,16 @@ export function createInvite(payload: CreateInvitePayload): MembershipInvite {
   return invite;
 }
 
-export function cancelInvite(inviteId: string): void {
+export function cancelInvite(inviteId: number): void {
   writeInvites(readInvites().filter((i) => i.id !== inviteId));
 }
 
-export function updateInviteRoles(inviteId: string, roleIds: string[]): void {
+export function updateInviteRoles(inviteId: number, roleIds: number[]): void {
   writeInvites(readInvites().map((i) => (i.id === inviteId ? { ...i, roleIds } : i)));
 }
 
 /** 대상의 id/유치원만 알고 있을 때(예: 멤버 목록 화면) 수락된 초대의 권한을 갱신합니다. */
-export function updateAcceptedInviteRoles(kindergartenId: string, targetUserId: string, roleIds: string[]): void {
+export function updateAcceptedInviteRoles(kindergartenId: number, targetUserId: string, roleIds: number[]): void {
   writeInvites(
     readInvites().map((i) =>
       i.kindergartenId === kindergartenId && i.targetUserId === targetUserId && i.status === "accepted" ? { ...i, roleIds } : i,
@@ -104,20 +104,20 @@ export function updateAcceptedInviteRoles(kindergartenId: string, targetUserId: 
 }
 
 /** 원장이 이미 수락된 멤버를 내보낼 때 씁니다. 초대 기록 자체를 지워, 다시 초대하면 새로 시작됩니다. */
-export function revokeAcceptedInvite(kindergartenId: string, targetUserId: string): void {
+export function revokeAcceptedInvite(kindergartenId: number, targetUserId: string): void {
   writeInvites(
     readInvites().filter((i) => !(i.kindergartenId === kindergartenId && i.targetUserId === targetUserId && i.status === "accepted")),
   );
 }
 
 /** 초대받은 사람이 수락/거절합니다. */
-export function respondToInvite(inviteId: string, accept: boolean): void {
+export function respondToInvite(inviteId: number, accept: boolean): void {
   writeInvites(
     readInvites().map((i) => (i.id === inviteId ? { ...i, status: accept ? "accepted" : "rejected", respondedAt: Date.now() } : i)),
   );
 }
 
 /** 이 계정이 이 유치원의 초대를 수락해 뒀는지 확인합니다. 배정받은 반/권한을 이어받는 데 씁니다. */
-export function findAcceptedInvite(kindergartenId: string, userId: string): MembershipInvite | undefined {
+export function findAcceptedInvite(kindergartenId: number, userId: string): MembershipInvite | undefined {
   return readInvites().find((i) => i.kindergartenId === kindergartenId && i.targetUserId === userId && i.status === "accepted");
 }

@@ -20,10 +20,10 @@ export type StudentGender = "male" | "female";
 
 /** 유치원 정보입니다. 원장은 직접 등록하고, 일반 교사는 검색해서 선택합니다. */
 export interface KindergartenInfo {
-  id: string;
+  id: number;
   name: string;
-  zonecode: string;
-  address: string;
+  zonecode?: string;
+  address?: string;
   addressDetail?: string;
   /** 원장이 등록할 때만 있습니다. */
   businessRegNo?: string;

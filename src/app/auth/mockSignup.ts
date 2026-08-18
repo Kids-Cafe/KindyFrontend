@@ -54,10 +54,10 @@ interface MockUserRecord {
 }
 
 const SEED_KINDERGARTENS: KindergartenInfo[] = [
-  { id: "kg-seed-1", name: "햇살유치원", zonecode: "06234", address: "서울특별시 강남구 테헤란로 123" },
-  { id: "kg-seed-2", name: "햇살유치원", zonecode: "48058", address: "부산광역시 해운대구 centum중앙로 45" },
-  { id: "kg-seed-3", name: "무지개유치원", zonecode: "13529", address: "경기도 성남시 분당구 판교역로 231" },
-  { id: "kg-seed-4", name: "꿈나무유치원", zonecode: "35240", address: "대전광역시 유성구 대학로 99" },
+  { id: -1, name: "햇살유치원", zonecode: "06234", address: "서울특별시 강남구 테헤란로 123" },
+  { id: -2, name: "햇살유치원", zonecode: "48058", address: "부산광역시 해운대구 centum중앙로 45" },
+  { id: -3, name: "무지개유치원", zonecode: "13529", address: "경기도 성남시 분당구 판교역로 231" },
+  { id: -4, name: "꿈나무유치원", zonecode: "35240", address: "대전광역시 유성구 대학로 99" },
 ];
 
 function readUsers(): MockUserRecord[] {
@@ -264,7 +264,7 @@ export interface UserSearchResult {
   accountType: AccountType;
   role?: UserRole;
   teacherRole?: TeacherRole;
-  kindergartenId?: string;
+  kindergartenId?: number;
   kindergartenName?: string;
 }
 
@@ -296,29 +296,8 @@ export function searchKindergartens(query: string): KindergartenInfo[] {
   return readKindergartens().filter((kg) => kg.name.includes(normalized));
 }
 
-export function getKindergartenById(id: string): KindergartenInfo | undefined {
+export function getKindergartenById(id: number): KindergartenInfo | undefined {
   return readKindergartens().find((kg) => kg.id === id);
-}
-
-export interface KindergartenRegisterPayload {
-  name: string;
-  zonecode: string;
-  address: string;
-  addressDetail: string;
-  businessRegNo: string;
-}
-
-export function registerKindergarten(payload: KindergartenRegisterPayload): KindergartenInfo {
-  const info: KindergartenInfo = {
-    id: newId(),
-    name: payload.name,
-    zonecode: payload.zonecode,
-    address: payload.address,
-    addressDetail: payload.addressDetail,
-    businessRegNo: payload.businessRegNo,
-  };
-  writeKindergartens([...readKindergartens(), info]);
-  return info;
 }
 
 /**
@@ -354,7 +333,7 @@ export async function seedDemoAccounts(): Promise<void> {
   const already = new Set(existing.map((u) => (u.loginId ?? u.email).toLowerCase()));
   if (DEMO_ACCOUNT_LOGIN_IDS.every((id) => already.has(id))) return;
 
-  const kindergarten: KindergartenInfo = { id: "kg-seed-1", name: "햇살유치원", zonecode: "06234", address: "서울특별시 강남구 테헤란로 123" };
+  const kindergarten: KindergartenInfo = { id: -1, name: "햇살유치원", zonecode: "06234", address: "서울특별시 강남구 테헤란로 123" };
   const joinedAt = new Date().toISOString();
   // 계정들이 같은 비밀번호를 쓰더라도 솔트가 달라 해시는 각각 달라집니다.
   const [parentPw, teacherPw, directorPw, kidPw, allRolesPw] = await Promise.all(
