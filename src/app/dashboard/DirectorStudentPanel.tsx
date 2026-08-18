@@ -4,6 +4,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/app/components/u
 import { useAuth } from "@/app/auth/AuthContext";
 import { getDisplayName } from "@/app/auth/getDisplayName";
 import { useDashboardStore } from "@/app/dashboard/DashboardStoreContext";
+import { ClassAssignSelect } from "@/app/dashboard/ClassAssignSelect";
 import { ChildFullReport } from "@/app/dashboard/features/ChildFullReport";
 import { ThreadChatFeature } from "@/app/dashboard/features/ThreadChatFeature";
 
@@ -38,8 +39,13 @@ export function DirectorStudentPanel({ childId, onClose }: { childId: string | n
                 <div className="flex items-center gap-3 min-w-0">
                   <span className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl shrink-0" style={{ background: child.avatarColor }}>{child.avatarEmoji}</span>
                   <div className="min-w-0">
-                    <p className="font-bold text-base truncate" style={{ color: "#3B1355" }}>{child.nickname} · {child.age}세</p>
-                    <p className="text-xs truncate" style={{ color: "#A06080" }}>{child.className} · {child.parentName}</p>
+                    {/* 나이는 아이 계정 프로필에만 있어 서버 멤버 목록에는 없을 수 있습니다. */}
+                    <p className="font-bold text-base truncate" style={{ color: "#3B1355" }}>
+                      {child.nickname}{child.age ? ` · ${child.age}세` : ""}
+                    </p>
+                    <p className="text-xs truncate" style={{ color: "#A06080" }}>
+                      {child.className}{child.parentName ? ` · ${child.parentName}` : ""}
+                    </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-1 shrink-0 rounded-full p-1" style={{ background: "#F9FAFB" }}>
@@ -63,6 +69,10 @@ export function DirectorStudentPanel({ childId, onClose }: { childId: string | n
 
             {view === "info" ? (
               <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-4">
+                <div className="py-3">
+                  <p className="text-xs font-bold mb-2" style={{ color: "#E879A0" }}>소속 반</p>
+                  <ClassAssignSelect userId={child.id} classId={child.classId || undefined} />
+                </div>
                 <ChildFullReport child={child} viewerRole="teacher" />
               </div>
             ) : (

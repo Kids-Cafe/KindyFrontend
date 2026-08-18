@@ -66,7 +66,9 @@ export function ChildFullReport({ child, viewerRole }: { child: ChildRecord; vie
       <div className="flex items-center gap-3 mb-2">
         <span className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl shrink-0" style={{ background: child.avatarColor }}>{child.avatarEmoji}</span>
         <div>
-          <p className="font-bold text-base" style={{ color: "#3B1355" }}>{child.nickname} · {child.age}세</p>
+          <p className="font-bold text-base" style={{ color: "#3B1355" }}>
+            {child.nickname}{child.age ? ` · ${child.age}세` : ""}
+          </p>
           <p className="text-xs" style={{ color: "#A06080" }}>{child.className}</p>
         </div>
       </div>

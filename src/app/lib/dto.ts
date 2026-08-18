@@ -10,13 +10,14 @@
 
 export type RelationshipType = "CHILD" | "TEACHER";
 
-/** RoleDTO.Permission. 백엔드가 아는 권한은 이 다섯 가지가 전부입니다. */
+/** RoleDTO.Permission. 백엔드가 아는 권한은 이 여섯 가지가 전부입니다. */
 export type BackendPermission =
   | "MANAGE_NOTICE"
   | "MANAGE_CLASS"
   | "MANAGE_MEMBER"
   | "MANAGE_SCHEDULE"
-  | "MANAGE_SUPPLY";
+  | "MANAGE_SUPPLY"
+  | "MANAGE_PHOTO";
 
 export interface KindergartenDTO {
   id: number;

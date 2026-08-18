@@ -4,6 +4,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/app/components/u
 import { useAuth } from "@/app/auth/AuthContext";
 import { getDisplayName } from "@/app/auth/getDisplayName";
 import { useDashboardStore } from "@/app/dashboard/DashboardStoreContext";
+import { ClassAssignSelect } from "@/app/dashboard/ClassAssignSelect";
 
 function formatTime(ms: number): string {
   const d = new Date(ms);
@@ -94,6 +95,11 @@ export function MemberProfilePanel({ teacherId, onClose }: { teacherId: string |
                 </div>
               </div>
             </SheetHeader>
+
+            <div className="px-4 pt-3">
+              <p className="text-xs font-bold mb-2" style={{ color: "#E879A0" }}>소속 반</p>
+              <ClassAssignSelect userId={teacher.id} classId={teacher.classId} />
+            </div>
 
             <div className="px-4 pt-3">
               <p className="text-xs font-bold mb-2" style={{ color: "#E879A0" }}>권한 역할</p>

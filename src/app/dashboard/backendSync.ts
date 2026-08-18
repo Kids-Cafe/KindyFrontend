@@ -416,6 +416,18 @@ export async function setTeacherNicknameOnServer(kindergartenId: number, teacher
   await apiPost("/api/kindergarten/setNickname", { id: kindergartenId, userId: teacherId, nickname });
 }
 
+/**
+ * 멤버를 반에 넣거나 뺍니다(`classId`를 주지 않으면 반 배정 해제).
+ * 아이와 교사 모두 T_RELATIONSHIP의 한 행이라 같은 엔드포인트를 씁니다. MANAGE_CLASS가 필요합니다.
+ */
+export async function setMemberClassOnServer(
+  kindergartenId: number,
+  userId: string,
+  classId: number | undefined,
+): Promise<void> {
+  await apiPost("/api/kindergarten/setClass", { id: kindergartenId, userId, classId: classId ?? "" });
+}
+
 export async function removeTeacherOnServer(kindergartenId: number, teacherId: string): Promise<void> {
   await apiPost("/api/kindergarten/remove", { id: kindergartenId, userId: teacherId });
 }

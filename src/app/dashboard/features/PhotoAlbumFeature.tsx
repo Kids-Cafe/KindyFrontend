@@ -188,8 +188,8 @@ export function PhotoAlbumFeature() {
   );
   const activeClassId = lockedClassId ?? selectedClassId;
 
-  const hasElevatedPermission = teacherHasPermission(data, "manageClasses");
-  const canManageHere = canManageClass(data, activeClassId, "manageClasses");
+  const hasElevatedPermission = teacherHasPermission(data, "managePhotos");
+  const canManageHere = canManageClass(data, activeClassId, "managePhotos");
 
   const photos = useMemo(
     () => data.photos.filter((p) => p.classId === activeClassId).sort((a, b) => b.takenAt - a.takenAt),

@@ -46,6 +46,7 @@ import {
   removeTeacherOnServer,
   renameClassOnServer,
   setRolePermissionsOnServer,
+  setMemberClassOnServer,
   setTeacherNicknameOnServer,
   setTeacherRoleOnServer,
   updateNoticeOnServer,
@@ -132,6 +133,8 @@ interface DashboardStoreValue {
   /** 유치원 안에서 통용되는 별칭을 바꿉니다. */
   updateChildNickname: (childId: string, nickname: string) => void;
   updateTeacherNickname: (teacherId: string, nickname: string) => void;
+  /** 멤버(아이·교사)를 반에 배정하거나 해제합니다(MANAGE_CLASS 필요). */
+  assignMemberClass: (userId: string, classId: number | undefined) => void;
   sendMemberMessage: (teacherId: string, senderRole: ChatSender, senderName: string, text: string) => void;
 
   /** 메인페이지(홈)에 기능 위젯을 추가/제거합니다. */
@@ -141,7 +144,24 @@ interface DashboardStoreValue {
 
 const DashboardStoreContext = createContext<DashboardStoreValue | null>(null);
 
-export function DashboardStoreProvider({ children }: { children: ReactNode }) {
+/**
+ * @param loading 워크스페이스를 받아오는 동안 보여줄 화면입니다.
+ * @param empty 소속된 유치원이 하나도 없을 때 보여줄 화면입니다. children 대신 렌더되므로,
+ *   여기에는 대시보드 바깥에서도 쓸 수 있는 화면(마이페이지·로그아웃 등)을 넣어야 합니다.
+ * @param membershipNonce 값이 바뀌면 소속 유치원 목록을 다시 받아옵니다. `empty` 화면에서
+ *   초대를 수락하거나 유치원에 가입한 뒤, 새로고침 없이 대시보드로 넘어가기 위한 것입니다.
+ */
+export function DashboardStoreProvider({
+  children,
+  loading,
+  empty,
+  membershipNonce = 0,
+}: {
+  children: ReactNode;
+  loading?: ReactNode;
+  empty?: ReactNode;
+  membershipNonce?: number;
+}) {
   const { user } = useAuth();
 
   const [dataByWorkspace, setDataByWorkspace] = useState<Record<string, DashboardData>>({});
@@ -207,7 +227,7 @@ export function DashboardStoreProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [user?.id]);
+  }, [user?.id, membershipNonce]);
 
   // ---- 지금 보고 있는 유치원의 실데이터 ----
   // 워크스페이스를 바꿀 때마다 그 유치원의 반·공지·일정·역할·멤버·준비물·사진을 새로 받습니다.
@@ -573,6 +593,31 @@ export function DashboardStoreProvider({ children }: { children: ReactNode }) {
     [kindergartenId, setData],
   );
 
+  const assignMemberClass = useCallback(
+    async (userId: string, classId: number | undefined) => {
+      await setMemberClassOnServer(kindergartenId, userId, classId);
+      setData((prev) => {
+        const className = prev.classes.find((c) => c.id === classId)?.name ?? "반 미배정";
+        // 아이는 classId가 없을 때 0(어떤 반과도 일치하지 않는 값), 교사는 undefined로 둡니다.
+        const applyChild = <T extends ChildRecord>(c: T): T =>
+          c.id === userId ? { ...c, classId: classId ?? 0, className } : c;
+        const applyTeacher = (t: TeacherRecord): TeacherRecord =>
+          t.id === userId ? { ...t, classId, className: classId === undefined ? "유치원 소속" : className } : t;
+
+        return {
+          ...prev,
+          me: prev.me && applyChild(prev.me),
+          myChild: prev.myChild && applyChild(prev.myChild),
+          classChildren: prev.classChildren.map(applyChild),
+          myClassChildren: prev.myClassChildren?.map(applyChild),
+          teacher: applyTeacher(prev.teacher),
+          teachers: prev.teachers.map(applyTeacher),
+        };
+      });
+    },
+    [kindergartenId, setData],
+  );
+
   // ---- 채팅 ----
   const choosePartner = useCallback(
     (childId: string, partner: AIPartnerId) => {
@@ -718,6 +763,7 @@ export function DashboardStoreProvider({ children }: { children: ReactNode }) {
       addParentNoteComment,
       updateChildNickname,
       updateTeacherNickname,
+      assignMemberClass,
       sendMemberMessage,
       addHomeWidget,
       removeHomeWidget,
@@ -756,6 +802,7 @@ export function DashboardStoreProvider({ children }: { children: ReactNode }) {
       addParentNoteComment,
       updateChildNickname,
       updateTeacherNickname,
+      assignMemberClass,
       sendMemberMessage,
       addHomeWidget,
       removeHomeWidget,
@@ -764,25 +811,9 @@ export function DashboardStoreProvider({ children }: { children: ReactNode }) {
 
   // 데이터가 준비되기 전에 children을 렌더하면 모든 화면이 빈 값을 방어해야 합니다.
   // 여기서 한 번 막아 두면 아래 화면들은 `data`가 항상 있다고 가정할 수 있습니다.
-  if (!data) return <DashboardPlaceholder isLoading={isLoading} />;
+  if (!data) return <>{isLoading ? loading : empty}</>;
 
   return <DashboardStoreContext.Provider value={value}>{children}</DashboardStoreContext.Provider>;
-}
-
-/** 워크스페이스를 받아오는 중이거나, 소속된 유치원이 하나도 없을 때 보여줍니다. */
-function DashboardPlaceholder({ isLoading }: { isLoading: boolean }) {
-  return (
-    <div className="flex flex-col items-center justify-center gap-2 h-full min-h-[60vh] px-6 text-center">
-      <p className="text-sm font-bold" style={{ color: "#3B1355" }}>
-        {isLoading ? "유치원 정보를 불러오는 중이에요…" : "아직 소속된 유치원이 없어요"}
-      </p>
-      {!isLoading && (
-        <p className="text-xs" style={{ color: "#A06080" }}>
-          받은 초대를 수락하거나, 마이페이지에서 유치원을 찾아 가입해주세요.
-        </p>
-      )}
-    </div>
-  );
 }
 
 // ---- 로딩 헬퍼 ----

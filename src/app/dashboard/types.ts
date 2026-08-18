@@ -25,23 +25,22 @@ export interface ClassRecord {
 /**
  * 디스코드의 "역할(role)"과 동일한 개념의 권한 플래그입니다. 원장이 교사 계정에 배정합니다.
  * 백엔드 `RoleDTO.Permission`과 1:1로 대응합니다(`@/app/lib/permissions`).
- *
- * 사진첩은 별도 권한이 아니라 반 관리(`manageClasses`)에 딸려 있습니다 —
- * 서버의 `class/photo/*`가 MANAGE_CLASS로 검사하기 때문입니다.
  */
 export type PermissionKey =
   | "manageNotices"
   | "manageClasses"
   | "manageMembers"
   | "manageSchedule"
-  | "manageSupplies";
+  | "manageSupplies"
+  | "managePhotos";
 
 export const PERMISSION_LABELS: Record<PermissionKey, string> = {
   manageNotices: "공지사항 관리",
-  manageClasses: "반·사진첩 관리",
+  manageClasses: "반 관리 (반 편성 포함)",
   manageMembers: "멤버 및 권한 관리",
   manageSchedule: "일정 관리 (전체 반)",
   manageSupplies: "준비물 작성",
+  managePhotos: "사진첩 관리 (전체 반)",
 };
 
 /** 원장이 만들고 교사 계정에 배정하는 권한 묶음입니다. */

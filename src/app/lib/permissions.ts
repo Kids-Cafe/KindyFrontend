@@ -11,6 +11,7 @@ const TO_BACKEND: Record<PermissionKey, BackendPermission> = {
   manageMembers: "MANAGE_MEMBER",
   manageSchedule: "MANAGE_SCHEDULE",
   manageSupplies: "MANAGE_SUPPLY",
+  managePhotos: "MANAGE_PHOTO",
 };
 
 const TO_FRONTEND = Object.fromEntries(

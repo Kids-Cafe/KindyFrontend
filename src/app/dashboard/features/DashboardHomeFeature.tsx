@@ -45,7 +45,9 @@ export function DashboardHomeFeature({
                 <span className="w-11 h-11 rounded-2xl flex items-center justify-center text-xl shrink-0" style={{ background: child.avatarColor }}>{child.avatarEmoji}</span>
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-bold truncate" style={{ color: "#3B1355" }}>{child.nickname}</p>
-                  <p className="text-xs truncate" style={{ color: "#A06080" }}>{child.age}세 · {child.parentName}</p>
+                  <p className="text-xs truncate" style={{ color: "#A06080" }}>
+                    {[child.age ? `${child.age}세` : null, child.parentName].filter(Boolean).join(" · ") || child.className}
+                  </p>
                 </div>
                 <ChevronRight className="w-4 h-4 shrink-0" style={{ color: "#D1D5DB" }} />
               </button>

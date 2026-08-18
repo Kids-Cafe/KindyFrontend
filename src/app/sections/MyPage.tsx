@@ -376,7 +376,8 @@ function MyPagePanel({ panel, onDone }: { panel: MenuKey; onDone: (message?: str
           <FieldLabel>아이 별칭</FieldLabel>
           <TextField value={childNickname} onChange={setChildNickname} />
           <FieldLabel>나이</FieldLabel>
-          <TextField value={`${store.data.myChild.age}세`} readOnly />
+          {/* 나이는 아이 계정 프로필에만 있어 멤버 목록에서는 알 수 없습니다. */}
+          <TextField value={store.data.myChild.age ? `${store.data.myChild.age}세` : "-"} readOnly />
           <FieldLabel>소속 반</FieldLabel>
           <TextField value={store.data.myChild.className} readOnly />
           <PasswordConfirmField show={user.provider === "email"} value={pwConfirm} onChange={(v) => { setPwConfirm(v); setPwError(null); }} error={pwError} />

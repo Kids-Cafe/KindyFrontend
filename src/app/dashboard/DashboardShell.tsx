@@ -2,6 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { ChevronRight, PanelRightClose, PanelRightOpen } from "lucide-react";
 import { useAuth } from "@/app/auth/AuthContext";
 import { MyPage } from "@/app/sections/MyPage";
+import { ReceivedInvites } from "@/app/auth/ReceivedInvites";
+import type { InviteTargetRole } from "@/app/auth/ReceivedInvites";
+import { MiniStar } from "@/app/components/decorative";
 import { DashboardStoreProvider, useDashboardStore } from "@/app/dashboard/DashboardStoreContext";
 import { ServerRail } from "@/app/dashboard/ServerRail";
 import { FeatureSidebar } from "@/app/dashboard/FeatureSidebar";
@@ -235,13 +238,96 @@ function DashboardBody() {
   );
 }
 
+/** 대시보드 바깥에서도 쓰는 최소 껍데기입니다. 워크스페이스가 없을 때의 화면이 여기 얹힙니다. */
+function BareScreen({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex flex-col items-center justify-center px-6 text-center bg-background"
+      style={{ background: "linear-gradient(160deg,#FFF7FA 0%,#FDF2F8 100%)" }}
+    >
+      <div className="flex items-center gap-2.5 mb-6">
+        <div className="w-9 h-9 rounded-xl flex items-center justify-center shadow-lg" style={{ background: "linear-gradient(135deg,#E879A0,#F472B6)" }}>
+          <MiniStar size={18} color="white" />
+        </div>
+        <span className="text-xl font-bold" style={{ fontFamily: "'Fredoka',sans-serif", color: "#3B1355" }}>kindy</span>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/**
+ * 소속된 유치원이 하나도 없을 때의 화면입니다.
+ *
+ * 대시보드 본체(`DashboardBody`)가 렌더되지 않는 상태이므로, 여기서 마이페이지와
+ * 로그아웃을 직접 띄워 줍니다. 이게 없으면 유치원에 가입할 방법 자체가 사라집니다.
+ * 받은 초대는 이 자리에서 바로 수락할 수 있게 함께 보여줍니다.
+ */
+function EmptyWorkspaceScreen({ onJoined }: { onJoined: () => void }) {
+  const { user, logout } = useAuth();
+  const [showMyPage, setShowMyPage] = useState(false);
+
+  const inviteRole: InviteTargetRole =
+    user?.accountType === "child" ? "child" : user?.role === "teacher" ? "teacher" : "parent";
+
+  return (
+    <BareScreen>
+      <p className="text-base font-bold mb-1.5" style={{ color: "#3B1355" }}>아직 소속된 유치원이 없어요</p>
+      <p className="text-sm mb-6" style={{ color: "#A06080" }}>
+        받은 초대를 수락하거나, 마이페이지에서 유치원을 찾아 가입해주세요.
+      </p>
+
+      <div className="w-full max-w-sm">
+        <ReceivedInvites role={inviteRole} onAccepted={onJoined} />
+      </div>
+
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => setShowMyPage(true)}
+          className="text-sm font-bold px-5 py-2.5 rounded-full text-white transition-transform active:scale-95"
+          style={{ background: "linear-gradient(135deg,#E879A0,#F472B6)" }}
+        >
+          마이페이지 열기
+        </button>
+        <button
+          onClick={logout}
+          className="text-sm font-bold px-5 py-2.5 rounded-full transition-colors hover:bg-black/[0.04]"
+          style={{ color: "#A06080", border: "1.5px solid rgba(232,121,160,0.3)" }}
+        >
+          로그아웃
+        </button>
+      </div>
+
+      {/* 마이페이지에서 유치원에 가입했을 수도 있으니 닫을 때 한 번 더 확인합니다. */}
+      {showMyPage && <MyPage onClose={() => { setShowMyPage(false); onJoined(); }} />}
+    </BareScreen>
+  );
+}
+
+function LoadingWorkspaceScreen() {
+  return (
+    <BareScreen>
+      <p className="text-sm font-bold" style={{ color: "#A06080" }} role="status" aria-live="polite">
+        유치원 정보를 불러오는 중이에요…
+      </p>
+    </BareScreen>
+  );
+}
+
 /** 로그인 + 온보딩을 마친 사용자가 보게 되는 디스코드형 대시보드 진입점입니다. */
 export function DashboardShell() {
   const { user } = useAuth();
+  // 소속 유치원이 생겼을 수 있는 시점마다 이 값을 올려 워크스페이스 목록을 다시 받습니다.
+  const [membershipNonce, setMembershipNonce] = useState(0);
+
   if (!user) return null;
 
   return (
-    <DashboardStoreProvider>
+    <DashboardStoreProvider
+      membershipNonce={membershipNonce}
+      loading={<LoadingWorkspaceScreen />}
+      empty={<EmptyWorkspaceScreen onJoined={() => setMembershipNonce((n) => n + 1)} />}
+    >
       <DashboardBody />
     </DashboardStoreProvider>
   );
