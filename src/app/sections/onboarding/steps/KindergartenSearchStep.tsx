@@ -20,8 +20,8 @@ export function KindergartenSearchStep({
   const [results, setResults] = useState<KindergartenInfo[]>([]);
   const [searched, setSearched] = useState(false);
 
-  function handleSearch() {
-    setResults(searchKindergartens(query));
+  async function handleSearch() {
+    setResults(await searchKindergartens(query));
     setSearched(true);
   }
 

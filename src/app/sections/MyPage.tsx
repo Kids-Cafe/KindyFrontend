@@ -307,7 +307,7 @@ function MyPagePanel({ panel, onDone }: { panel: MenuKey; onDone: (message?: str
             <div className="flex gap-2 mb-3">
               <TextField value={kinderQuery} onChange={setKinderQuery} placeholder="유치원 이름" />
               <button
-                onClick={() => setKinderResults(searchKindergartens(kinderQuery))}
+                onClick={() => searchKindergartens(kinderQuery).then(setKinderResults)}
                 className="shrink-0 px-4 rounded-2xl text-xs font-bold"
                 style={{ background: "rgba(232,121,160,0.1)", color: "#E879A0", border: "1.5px solid #FBCFE8" }}
               >

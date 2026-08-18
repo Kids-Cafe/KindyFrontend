@@ -43,12 +43,36 @@ export function OnboardingWizard({ onComplete }: { onComplete: () => void }) {
     ? { nickname: 1, kinderParent: 2 }[step as "nickname" | "kinderParent"]
     : { role: 1, nickname: 2, teacherRole: 3, kinder: 4, kinderParent: 3 }[step];
 
-  function finish(partial: Partial<AuthUser>) {
+  /**
+   * @param join 방금 고른 유치원에 실제로 합류(가입) 요청까지 보낼지. 원장이 막
+   * 만든 유치원은 `registerKindergarten`의 create 호출이 곧 소유자 등록이라 false로 넘깁니다.
+   */
+  async function finish(partial: Partial<AuthUser>, join?: { type: "CHILD" | "TEACHER" }) {
     updateProfile({ ...partial, onboardingCompleted: true });
-    fetch("/api/user/onboarding/complete", {
+
+    const kindergartenId = partial.kindergarten?.id;
+    if (join && kindergartenId && kindergartenId > 0) {
+      await fetch("/api/kindergarten/join", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        credentials: "include",
+        body: new URLSearchParams({ id: String(kindergartenId), type: join.type }),
+      }).catch(() => {});
+    }
+    if (partial.nickname && kindergartenId && kindergartenId > 0) {
+      await fetch("/api/kindergarten/setNickname", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        credentials: "include",
+        body: new URLSearchParams({ id: String(kindergartenId), userId: user!.id, nickname: partial.nickname }),
+      }).catch(() => {});
+    }
+
+    await fetch("/api/user/onboarding/complete", {
         method: "POST",
         credentials: "include"
-    }).then(onComplete);
+    });
+    onComplete();
   }
 
   return (
@@ -111,7 +135,10 @@ export function OnboardingWizard({ onComplete }: { onComplete: () => void }) {
 
         {step === "kinder" && teacherRole === "director" && (
           <KindergartenRegisterStep
-            onSubmit={(payload) => finish({ role: "teacher", teacherRole: "director", kindergarten: registerKindergarten(payload) })}
+            onSubmit={async (payload) => {
+              const kindergarten = await registerKindergarten(payload);
+              finish({ role: "teacher", teacherRole: "director", kindergarten });
+            }}
           />
         )}
 
@@ -119,7 +146,7 @@ export function OnboardingWizard({ onComplete }: { onComplete: () => void }) {
           <>
             <ReceivedInvites role="teacher" onAccepted={() => finish({})} />
             <KindergartenSearchStep
-              onSelect={(kindergarten) => finish({ role: "teacher", teacherRole: "teacher", kindergarten })}
+              onSelect={(kindergarten) => finish({ role: "teacher", teacherRole: "teacher", kindergarten }, { type: "TEACHER" })}
               onSkip={() => finish({ role: "teacher", teacherRole: "teacher" })}
             />
           </>
@@ -129,7 +156,7 @@ export function OnboardingWizard({ onComplete }: { onComplete: () => void }) {
           <>
             <ReceivedInvites role={isChildAccount ? "child" : "parent"} onAccepted={() => finish({})} />
             <KindergartenSearchStep
-              onSelect={(kindergarten) => finish({ role: "parent", nickname: nickname ?? undefined, kindergarten })}
+              onSelect={(kindergarten) => finish({ role: "parent", nickname: nickname ?? undefined, kindergarten }, { type: "CHILD" })}
               onSkip={() => finish({ role: "parent", nickname: nickname ?? undefined })}
             />
           </>

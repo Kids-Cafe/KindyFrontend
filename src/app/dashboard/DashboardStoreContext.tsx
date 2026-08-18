@@ -3,7 +3,6 @@ import type { ReactNode } from "react";
 import { useAuth } from "@/app/auth/AuthContext";
 import { isAllRolesDemoUser } from "@/app/auth/mockSignup";
 import { buildDashboardData, buildAltDashboardData } from "@/app/dashboard/retrieveData.ts";
-import { revokeAcceptedInvite, updateAcceptedInviteRoles } from "@/app/dashboard/mock/membershipInvites";
 import type {
   AIPartnerId,
   ChatSender,
@@ -15,6 +14,34 @@ import type {
   PhotoThemeId,
 } from "@/app/dashboard/types";
 import { newId } from "@/app/lib/id";
+import {
+  addPhotoOnServer,
+  assignTeacherRoleOnServer,
+  createClass,
+  createNoticeOnServer,
+  createRoleOnServer,
+  createScheduleOnServer,
+  createSupplyOnServer,
+  deleteClassOnServer,
+  deleteNoticeOnServer,
+  deletePhotoOnServer,
+  deleteRoleOnServer,
+  deleteScheduleOnServer,
+  fetchClasses,
+  fetchMembers,
+  fetchMemberships,
+  fetchNotices,
+  fetchPhotos,
+  fetchRoles,
+  fetchSchedule,
+  fetchSupplies,
+  mergeTeacherMemberships,
+  removeTeacherOnServer,
+  renameClassOnServer,
+  setNoticePinnedOnServer,
+  setTeacherNicknameOnServer,
+  updateScheduleOnServer,
+} from "@/app/dashboard/backendSync";
 
 /** 지금 로그인된 사람이 오갈 수 있는 "서버"(유치원) 단위 워크스페이스입니다. */
 export interface DashboardWorkspace {
@@ -111,7 +138,7 @@ interface DashboardStoreValue {
   deleteScheduleEvent: (eventId: number) => void;
 
   /** 사진첩: 반 단위로 나뉩니다. 등록·수정·삭제 권한은 화면(PhotoAlbumFeature)에서 판단합니다. */
-  addPhoto: (url: string, uploadedBy: string, classId: number, theme: PhotoThemeId, caption?: string) => void;
+  addPhoto: (file: File, uploadedBy: string, classId: number, theme: PhotoThemeId, caption?: string) => void;
   /** 사진 카드를 감싸는 장식 테마를 바꿉니다. */
   updatePhotoTheme: (photoId: number, theme: PhotoThemeId) => void;
   deletePhoto: (photoId: number) => void;
@@ -156,16 +183,18 @@ export function DashboardStoreProvider({ children }: { children: ReactNode }) {
   });
 
   useEffect(() => {
-    fetch("/api/kindergarten/memberships", {
-      method: "GET",
-      credentials: "include"
-    }).then(r => r.json()).then(r => {
-      if (r.status != "success") return;
-      const t = r.data.map((d: any) => [newId(), buildDashboardData({...user!, kindergarten: {id: d.kindergartenId, name: d.kindergartenName}}, "director")])
-      if (!t.length) return;
-      setDataByWorkspace(Object.fromEntries(t));
-      setActiveWorkspaceId(t[0][0]);
-    })
+    fetchMemberships()
+      .then((memberships) => {
+        if (!memberships.length) return;
+        const entries = memberships.map(
+          (m) =>
+            [String(newId()), buildDashboardData({ ...user!, kindergarten: { id: m.kindergartenId, name: m.kindergartenName } }, "director")] as const,
+        );
+        setDataByWorkspace(Object.fromEntries(entries));
+        setActiveWorkspaceId(entries[0][0]);
+      })
+      // 백엔드가 아직 없거나(로컬 개발) 비로그인 상태면 목업 워크스페이스를 그대로 둡니다.
+      .catch(() => {});
   }, [])
 
   const [activeWorkspaceId, setActiveWorkspaceId] = useState(() =>
@@ -173,6 +202,64 @@ export function DashboardStoreProvider({ children }: { children: ReactNode }) {
   );
 
   const data = dataByWorkspace[activeWorkspaceId];
+
+  // 지금 보고 있는 워크스페이스의 유치원 실데이터(반/공지/일정/역할/멤버/준비물/사진)를
+  // 백엔드에서 가져와 병합합니다. 데모 워크스페이스(음수 id)처럼 서버에 없는 유치원이면
+  // 요청이 실패하고, 그 경우 목업 데이터를 그대로 둡니다.
+  useEffect(() => {
+    if (!data) return;
+    const kindergartenId = data.kindergarten.id;
+    const workspaceId = activeWorkspaceId;
+
+    const prevNoticeById = new Map(data.notices.map((n) => [n.id, n]));
+    const prevScheduleById = new Map(data.scheduleEvents.map((e) => [e.id, e]));
+    const prevRoleById = new Map(data.roles.map((r) => [r.id, r]));
+
+    (async () => {
+      try {
+        const [classes, notices, scheduleEvents, roles, members] = await Promise.all([
+          fetchClasses(kindergartenId),
+          fetchNotices(kindergartenId, prevNoticeById),
+          fetchSchedule(kindergartenId, prevScheduleById),
+          fetchRoles(kindergartenId, prevRoleById),
+          fetchMembers(kindergartenId),
+        ]);
+
+        const suppliesEntries = await Promise.all(
+          classes.map(async (c) => {
+            const prev = new Map((data.suppliesByClass[c.id] ?? []).map((s) => [s.id, s]));
+            return [c.id, await fetchSupplies(c.id, prev)] as const;
+          }),
+        );
+        const photosByClass = await Promise.all(
+          classes.map(async (c) => {
+            const prev = new Map(data.photos.filter((p) => p.classId === c.id).map((p) => [p.id, p]));
+            return fetchPhotos(c.id, prev);
+          }),
+        );
+
+        setDataByWorkspace((prev) => {
+          const target = prev[workspaceId];
+          if (!target) return prev;
+          return {
+            ...prev,
+            [workspaceId]: {
+              ...target,
+              classes,
+              notices,
+              scheduleEvents,
+              roles,
+              teachers: mergeTeacherMemberships(target.teachers, members),
+              suppliesByClass: Object.fromEntries(suppliesEntries),
+              photos: photosByClass.flat(),
+            },
+          };
+        });
+      } catch {
+        // 서버에 없는(데모용) 유치원이거나 아직 백엔드가 없는 환경입니다. 목업을 유지합니다.
+      }
+    })();
+  }, [activeWorkspaceId, data?.kindergarten.id]);
 
   // 지금 보고 있는 워크스페이스만 갱신합니다. 렌더 중에 값을 써 넣는 ref 대신
   // 의존성으로 받아야, 워크스페이스를 바꾼 직후에도 항상 맞는 대상에 반영됩니다.
@@ -325,116 +412,117 @@ export function DashboardStoreProvider({ children }: { children: ReactNode }) {
     });
   }, [setData]);
 
-  const addNotice = useCallback(async (title: string, body: string, authorName: string, bannerEnabled = false) => {
-    const p = new URLSearchParams();
-    p.set("kindergartenId", String(data.kindergarten.id))
-    p.set("title", title);
-    p.set("content", body);
-    p.set("pinned", "false");
-    const f = await fetch('/api/kindergarten/notice/create', {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded"
-      },
-      credentials: 'include',
-      body: p
-    });
+  const addNotice = useCallback(async (title: string, body: string, _authorName: string, bannerEnabled = false) => {
+    const kindergartenId = data.kindergarten.id;
+    const prevById = new Map(data.notices.map((n) => [n.id, n]));
+    const notices = await createNoticeOnServer(kindergartenId, title, body, prevById);
+    const latest = notices.length ? notices.reduce((a, b) => (a.createdAt >= b.createdAt ? a : b)) : undefined;
     setData((prev) => ({
       ...prev,
-      notices: [
-        { id: Math.random(), kindergartenId: prev.kindergarten.id, title, body, authorName, createdAt: Date.now(), pinned: false, bannerEnabled },
-        ...prev.notices,
-      ],
+      // 배너 노출 여부는 서버에 저장되지 않는 필드라, 방금 만든 공지에 한해 로컬로 붙여줍니다.
+      notices: bannerEnabled && latest ? notices.map((n) => (n.id === latest.id ? { ...n, bannerEnabled: true } : n)) : notices,
     }));
-  }, [setData]);
+  }, [data.kindergarten.id, data.notices, setData]);
 
-  const togglePinNotice = useCallback((noticeId: number) => {
-    setData((prev) => ({
-      ...prev,
-      notices: prev.notices.map((n) => (n.id === noticeId ? { ...n, pinned: !n.pinned } : n)),
-    }));
-  }, [setData]);
+  const togglePinNotice = useCallback(async (noticeId: number) => {
+    const target = data.notices.find((n) => n.id === noticeId);
+    if (!target) return;
+    const prevById = new Map(data.notices.map((n) => [n.id, n]));
+    const notices = await setNoticePinnedOnServer(data.kindergarten.id, target, !target.pinned, prevById);
+    setData((prev) => ({ ...prev, notices }));
+  }, [data.kindergarten.id, data.notices, setData]);
 
   const toggleNoticeBanner = useCallback((noticeId: number) => {
+    // 배너 노출 여부는 NoticeDTO에 없는 필드라 완전히 로컬 상태입니다(백엔드 개선 필요).
     setData((prev) => ({
       ...prev,
       notices: prev.notices.map((n) => (n.id === noticeId ? { ...n, bannerEnabled: !n.bannerEnabled } : n)),
     }));
   }, [setData]);
 
-  const deleteNotice = useCallback((noticeId: number) => {
-    setData((prev) => ({ ...prev, notices: prev.notices.filter((n) => n.id !== noticeId) }));
-  }, [setData]);
+  const deleteNotice = useCallback(async (noticeId: number) => {
+    const prevById = new Map(data.notices.map((n) => [n.id, n]));
+    const notices = await deleteNoticeOnServer(data.kindergarten.id, noticeId, prevById);
+    setData((prev) => ({ ...prev, notices }));
+  }, [data.kindergarten.id, data.notices, setData]);
 
-  const addClass = useCallback((name: string) => {
+  const addClass = useCallback(async (name: string) => {
+    const classes = await createClass(data.kindergarten.id, name);
+    setData((prev) => ({ ...prev, classes }));
+  }, [data.kindergarten.id, setData]);
+
+  const renameClass = useCallback(async (classId: number, name: string) => {
+    const classes = await renameClassOnServer(data.kindergarten.id, classId, name);
+    setData((prev) => ({ ...prev, classes }));
+  }, [data.kindergarten.id, setData]);
+
+  const deleteClass = useCallback(async (classId: number) => {
+    const classes = await deleteClassOnServer(data.kindergarten.id, classId);
+    setData((prev) => ({ ...prev, classes }));
+  }, [data.kindergarten.id, setData]);
+
+  const createRole = useCallback(async (name: string, color: string) => {
+    const prevById = new Map(data.roles.map((r) => [r.id, r]));
+    const roles = await createRoleOnServer(data.kindergarten.id, name, prevById);
+    // 방금 만든 역할에 고른 색을 로컬로 붙입니다(RoleDTO에 색상 필드가 없어 서버엔 저장되지 않습니다).
+    const created = roles.find((r) => !prevById.has(r.id));
     setData((prev) => ({
       ...prev,
-      classes: [...prev.classes, { id: newId(), name, kindergartenId: prev.kindergarten.id }],
+      roles: created ? roles.map((r) => (r.id === created.id ? { ...r, color } : r)) : roles,
     }));
-  }, [setData]);
-
-  const renameClass = useCallback((classId: number, name: string) => {
-    setData((prev) => ({
-      ...prev,
-      classes: prev.classes.map((c) => (c.id === classId ? { ...c, name } : c)),
-    }));
-  }, [setData]);
-
-  const deleteClass = useCallback((classId: number) => {
-    setData((prev) => ({ ...prev, classes: prev.classes.filter((c) => c.id !== classId) }));
-  }, [setData]);
-
-  const createRole = useCallback((name: string, color: string) => {
-    setData((prev) => ({
-      ...prev,
-      roles: [...prev.roles, { id: newId(), name, color, permissions: [] }],
-    }));
-  }, [setData]);
+  }, [data.kindergarten.id, data.roles, setData]);
 
   const updateRolePermissions = useCallback((roleId: number, permissions: PermissionKey[]) => {
+    // 권한을 개별로 켜고 끄는 백엔드 엔드포인트가 없어(조회용 role/permissions만 존재) 로컬 상태입니다.
     setData((prev) => ({
       ...prev,
       roles: prev.roles.map((r) => (r.id === roleId ? { ...r, permissions } : r)),
     }));
   }, [setData]);
 
-  const deleteRole = useCallback((roleId: number) => {
+  const deleteRole = useCallback(async (roleId: number) => {
+    const prevById = new Map(data.roles.map((r) => [r.id, r]));
+    const roles = await deleteRoleOnServer(data.kindergarten.id, roleId, prevById);
     setData((prev) => ({
       ...prev,
-      roles: prev.roles.filter((r) => r.id !== roleId),
+      roles,
       teachers: prev.teachers.map((t) => ({ ...t, roleIds: t.roleIds.filter((id) => id !== roleId) })),
     }));
-  }, [setData]);
+  }, [data.kindergarten.id, data.roles, setData]);
 
   const assignTeacherRole = useCallback((teacherId: string, roleId: number, assigned: boolean) => {
-    setData((prev) => {
-      const nextTeachers = prev.teachers.map((t) =>
-        t.id !== teacherId
-          ? t
-          : { ...t, roleIds: assigned ? [...new Set([...t.roleIds, roleId])] : t.roleIds.filter((id) => id !== roleId) },
-      );
-      // 초대를 수락해 합류한 교사라면, 다음 로그인 때도 배정한 권한이 이어지도록
-      // localStorage의 초대 레코드에도 함께 반영합니다. 초대 출신이 아닌 id면 조용히 무시됩니다.
-      const updated = nextTeachers.find((t) => t.id === teacherId);
-      if (updated) updateAcceptedInviteRoles(prev.kindergarten.id, teacherId, updated.roleIds);
-      return { ...prev, teachers: nextTeachers };
-    });
-  }, [setData]);
+    if (assigned) {
+      // 백엔드는 멤버십당 역할을 하나만 저장합니다(RelationshipDTO.roleId 단일 필드).
+      // 배정하면 서버 값을 이 역할 하나로 덮어씁니다 — "해제" 엔드포인트는 아직 없어
+      // assigned=false는 로컬에서만 반영되고, 다음 서버 재동기화 때 되돌아올 수 있습니다.
+      assignTeacherRoleOnServer(data.kindergarten.id, teacherId, roleId).catch(() => {});
+    }
+    setData((prev) => ({
+      ...prev,
+      teachers: prev.teachers.map((t) =>
+        t.id !== teacherId ? t : { ...t, roleIds: assigned ? [roleId] : t.roleIds.filter((id) => id !== roleId) },
+      ),
+    }));
+  }, [data.kindergarten.id, setData]);
 
   const removeTeacherMembership = useCallback((teacherId: string) => {
-    setData((prev) => {
-      revokeAcceptedInvite(prev.kindergarten.id, teacherId);
-      return { ...prev, teachers: prev.teachers.filter((t) => t.id !== teacherId) };
-    });
-  }, [setData]);
+    removeTeacherOnServer(data.kindergarten.id, teacherId).catch(() => {});
+    setData((prev) => ({ ...prev, teachers: prev.teachers.filter((t) => t.id !== teacherId) }));
+  }, [data.kindergarten.id, setData]);
 
-  const addSupplyItem = useCallback((classId: number, title: string, body: string, authorName: string, dueDate?: string) => {
-    setData((prev) => {
-      const list = prev.suppliesByClass[classId] ?? [];
-      const item = { id: newId(), classId, title, body, authorName, createdAt: Date.now(), dueDate, comments: [] };
-      return { ...prev, suppliesByClass: { ...prev.suppliesByClass, [classId]: [item, ...list] } };
-    });
-  }, [setData]);
+  const addSupplyItem = useCallback(async (classId: number, title: string, body: string, authorName: string, dueDate?: string) => {
+    const prevById = new Map((data.suppliesByClass[classId] ?? []).map((s) => [s.id, s]));
+    const list = await createSupplyOnServer(classId, title, body, dueDate, prevById);
+    const latest = list.length ? list.reduce((a, b) => (a.createdAt >= b.createdAt ? a : b)) : undefined;
+    setData((prev) => ({
+      ...prev,
+      // 작성자는 SupplyDTO에 없는 필드라, 방금 만든 항목에 한해 로컬로 붙여줍니다.
+      suppliesByClass: {
+        ...prev.suppliesByClass,
+        [classId]: latest ? list.map((s) => (s.id === latest.id ? { ...s, authorName } : s)) : list,
+      },
+    }));
+  }, [data.suppliesByClass, setData]);
 
   const addSupplyComment = useCallback((classId: number, supplyId: number, authorName: string, authorRole: DashboardData["role"], text: string) => {
     const trimmed = text.trim();
@@ -455,44 +543,50 @@ export function DashboardStoreProvider({ children }: { children: ReactNode }) {
     });
   }, [setData]);
 
-  const addScheduleEvent = useCallback((title: string, date: string, time: string | undefined, createdBy: string, classId?: number) => {
+  const addScheduleEvent = useCallback(async (title: string, date: string, time: string | undefined, createdBy: string, classId?: number) => {
+    const prevById = new Map(data.scheduleEvents.map((e) => [e.id, e]));
+    const list = await createScheduleOnServer(data.kindergarten.id, title, date, time, classId, prevById);
+    const latest = list.length ? list.reduce((a, b) => (a.createdAt >= b.createdAt ? a : b)) : undefined;
     setData((prev) => ({
       ...prev,
-      scheduleEvents: [
-        { id: newId(), kindergartenId: prev.kindergarten.id, classId, title, date, time, createdBy, createdAt: Date.now() },
-        ...prev.scheduleEvents,
-      ],
+      // 작성자는 ScheduleDTO에 없는 필드라, 방금 만든 일정에 한해 로컬로 붙여줍니다.
+      scheduleEvents: latest ? list.map((e) => (e.id === latest.id ? { ...e, createdBy } : e)) : list,
     }));
-  }, [setData]);
+  }, [data.kindergarten.id, data.scheduleEvents, setData]);
 
-  const updateScheduleEvent = useCallback((eventId: number, title: string, date: string, time: string | undefined, classId?: number) => {
-    setData((prev) => ({
-      ...prev,
-      scheduleEvents: prev.scheduleEvents.map((e) => (e.id === eventId ? { ...e, title, date, time, classId } : e)),
-    }));
-  }, [setData]);
+  const updateScheduleEvent = useCallback(async (eventId: number, title: string, date: string, time: string | undefined, classId?: number) => {
+    const prevById = new Map(data.scheduleEvents.map((e) => [e.id, e]));
+    const scheduleEvents = await updateScheduleOnServer(data.kindergarten.id, eventId, title, date, time, classId, prevById);
+    setData((prev) => ({ ...prev, scheduleEvents }));
+  }, [data.kindergarten.id, data.scheduleEvents, setData]);
 
-  const deleteScheduleEvent = useCallback((eventId: number) => {
-    setData((prev) => ({ ...prev, scheduleEvents: prev.scheduleEvents.filter((e) => e.id !== eventId) }));
-  }, [setData]);
+  const deleteScheduleEvent = useCallback(async (eventId: number) => {
+    const prevById = new Map(data.scheduleEvents.map((e) => [e.id, e]));
+    const scheduleEvents = await deleteScheduleOnServer(data.kindergarten.id, eventId, prevById);
+    setData((prev) => ({ ...prev, scheduleEvents }));
+  }, [data.kindergarten.id, data.scheduleEvents, setData]);
 
-  const addPhoto = useCallback((url: string, uploadedBy: string, classId: number, theme: PhotoThemeId, caption?: string) => {
-    setData((prev) => ({
-      ...prev,
-      photos: [{ id: newId(), classId: classId, url, caption, uploadedBy, theme, takenAt: Date.now() }, ...prev.photos],
-    }));
-  }, [setData]);
+  const addPhoto = useCallback(async (file: File, uploadedBy: string, classId: number, theme: PhotoThemeId, caption?: string) => {
+    const prevById = new Map(data.photos.filter((p) => p.classId === classId).map((p) => [p.id, p]));
+    const forClass = await addPhotoOnServer(classId, file, uploadedBy, theme, caption, prevById);
+    setData((prev) => ({ ...prev, photos: [...forClass, ...prev.photos.filter((p) => p.classId !== classId)] }));
+  }, [data.photos, setData]);
 
   const updatePhotoTheme = useCallback((photoId: number, theme: PhotoThemeId) => {
+    // 테마는 PhotoDTO에 없는 필드라 로컬 상태입니다(백엔드 개선 필요).
     setData((prev) => ({
       ...prev,
       photos: prev.photos.map((p) => (p.id === photoId ? { ...p, theme } : p)),
     }));
   }, [setData]);
 
-  const deletePhoto = useCallback((photoId: number) => {
-    setData((prev) => ({ ...prev, photos: prev.photos.filter((p) => p.id !== photoId) }));
-  }, [setData]);
+  const deletePhoto = useCallback(async (photoId: number) => {
+    const target = data.photos.find((p) => p.id === photoId);
+    if (!target) return;
+    const prevById = new Map(data.photos.filter((p) => p.classId === target.classId).map((p) => [p.id, p]));
+    const forClass = await deletePhotoOnServer(target.classId, photoId, prevById);
+    setData((prev) => ({ ...prev, photos: [...forClass, ...prev.photos.filter((p) => p.classId !== target.classId)] }));
+  }, [data.photos, setData]);
 
   const addParentNote = useCallback((childId: string, authorName: string, text: string) => {
     const trimmed = text.trim();
@@ -545,12 +639,13 @@ export function DashboardStoreProvider({ children }: { children: ReactNode }) {
 
   const updateTeacherNickname = useCallback((teacherId: string, nickname: string) => {
     const trimmed = nickname.trim();
+    setTeacherNicknameOnServer(data.kindergarten.id, teacherId, trimmed).catch(() => {});
     setData((prev) => ({
       ...prev,
       teacher: prev.teacher.id === teacherId ? { ...prev.teacher, nickname: trimmed || undefined } : prev.teacher,
       teachers: prev.teachers.map((t) => (t.id === teacherId ? { ...t, nickname: trimmed || undefined } : t)),
     }));
-  }, [setData]);
+  }, [data.kindergarten.id, setData]);
 
   const sendMemberMessage = useCallback((teacherId: string, senderRole: ChatSender, senderName: string, text: string) => {
     const trimmed = text.trim();

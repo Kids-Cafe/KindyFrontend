@@ -4,15 +4,30 @@ import { useDashboardStore } from "@/app/dashboard/DashboardStoreContext";
 import { useAuth } from "@/app/auth/AuthContext";
 import { searchUsersByLoginId } from "@/app/auth/mockSignup";
 import type { UserSearchResult } from "@/app/auth/mockSignup";
-import { createInvite, cancelInvite, listInvitesSentByKindergarten } from "@/app/dashboard/mock/membershipInvites";
-import type { MembershipInvite, InviteStatus } from "@/app/dashboard/mock/membershipInvites";
-import { getDisplayName } from "@/app/auth/getDisplayName";
+import { apiGet, apiPost } from "@/app/lib/api";
 import { PERMISSION_LABELS } from "@/app/dashboard/types";
 import type { PermissionKey } from "@/app/dashboard/types";
 import { useConfirm } from "@/app/components/ConfirmDialog";
 
 const ALL_PERMISSIONS = Object.keys(PERMISSION_LABELS) as PermissionKey[];
 const ROLE_COLORS = ["#E879A0", "#60A5FA", "#86EFAC", "#F9D56E", "#C084FC"];
+
+/** 백엔드 InviteDTO입니다. 표시용 이름/아이디/반 정보가 없어(백엔드 개선 필요), 검색 결과에서 알아낸 값만 보충합니다. */
+interface InviteDTO {
+  id: number;
+  kindergartenId: number;
+  userId: string;
+  status: "PENDING" | "ACCEPTED" | "REJECTED" | "CANCELED";
+  createdAt: number;
+}
+
+type InviteStatus = "pending" | "accepted" | "rejected";
+const STATUS_MAP: Record<InviteDTO["status"], InviteStatus> = {
+  PENDING: "pending",
+  ACCEPTED: "accepted",
+  REJECTED: "rejected",
+  CANCELED: "rejected",
+};
 
 const STATUS_LABEL: Record<InviteStatus, string> = { pending: "승인 대기", accepted: "가입 완료", rejected: "거절됨" };
 const STATUS_COLOR: Record<InviteStatus, { bg: string; fg: string }> = {
@@ -42,31 +57,41 @@ export function MemberManageFeature() {
   const [results, setResults] = useState<UserSearchResult[]>([]);
   const [searched, setSearched] = useState(false);
   const [invitingId, setInvitingId] = useState<string | null>(null);
-  const [inviteClassId, setInviteClassId] = useState(data.classes[0]?.id ?? "");
-  const [sentInvites, setSentInvites] = useState<MembershipInvite[]>([]);
-
-  useEffect(() => {
-    setSentInvites(listInvitesSentByKindergarten(data.kindergarten.id));
-  }, [data.kindergarten.id]);
+  // 백엔드 초대에는 classId가 없어(백엔드 개선 필요) 화면에만 남겨둔 선택값입니다.
+  const [inviteClassId, setInviteClassId] = useState<number | "">(data.classes[0]?.id ?? "");
+  const [sentInvites, setSentInvites] = useState<InviteDTO[]>([]);
+  // 초대 대상의 이름/아이디는 InviteDTO에 없어, 이번 세션에서 검색해 알아낸 결과로만 채웁니다.
+  const [nameById, setNameById] = useState<Record<string, { name: string; loginId: string }>>({});
 
   function refreshInvites() {
-    setSentInvites(listInvitesSentByKindergarten(data.kindergarten.id));
+    apiGet<InviteDTO[]>("/api/kindergarten/invite/list", { kindergartenId: data.kindergarten.id })
+      .then(setSentInvites)
+      .catch(() => {});
   }
 
+  useEffect(() => {
+    refreshInvites();
+  }, [data.kindergarten.id]);
+
   const pendingTargetIds = useMemo(
-    () => new Set(sentInvites.filter((i) => i.status === "pending").map((i) => i.targetUserId)),
+    () => new Set(sentInvites.filter((i) => STATUS_MAP[i.status] === "pending").map((i) => i.userId)),
     [sentInvites],
   );
   const memberIds = useMemo(() => new Set(data.teachers.map((t) => t.id)), [data.teachers]);
 
-  function togglePermission(roleId: string, key: PermissionKey, current: PermissionKey[]) {
+  function togglePermission(roleId: number, key: PermissionKey, current: PermissionKey[]) {
     const next = current.includes(key) ? current.filter((p) => p !== key) : [...current, key];
     updateRolePermissions(roleId, next);
   }
 
   function handleSearch() {
     const all = searchUsersByLoginId(query);
-    setResults(all.filter((r) => r.accountType === "adult" && r.id !== user?.id));
+    const filtered = all.filter((r) => r.accountType === "adult" && r.id !== user?.id);
+    setResults(filtered);
+    setNameById((prev) => ({
+      ...prev,
+      ...Object.fromEntries(filtered.map((r) => [r.id, { name: r.name, loginId: r.loginId }])),
+    }));
     setSearched(true);
   }
 
@@ -75,29 +100,19 @@ export function MemberManageFeature() {
     setInviteClassId(data.classes[0]?.id ?? "");
   }
 
-  function handleSendInvite(result: UserSearchResult) {
+  async function handleSendInvite(result: UserSearchResult) {
     if (!user) return;
-    // 반을 고르지 않았으면(빈 값) 특정 반이 아닌 "유치원 소속"으로 초대합니다.
-    const cls = data.classes.find((c) => c.id === inviteClassId);
-    createInvite({
-      kindergartenId: data.kindergarten.id,
-      kindergartenName: data.kindergarten.name,
-      targetUserId: result.id,
-      targetLoginId: result.loginId,
-      targetName: result.name,
-      role: "teacher",
-      classId: cls?.id,
-      className: cls?.name,
-      roleIds: [],
-      invitedByName: getDisplayName(user),
-    });
+    // 초대 시점에 반을 지정하는 필드가 백엔드 InviteDTO에 없어(백엔드 개선 필요),
+    // 여기서 고른 반은 화면 안내용일 뿐 서버로 전달되지 않습니다.
+    await apiPost("/api/kindergarten/invite", { id: data.kindergarten.id, userId: result.id, type: "TEACHER" }).catch(() => {});
     setInvitingId(null);
     refreshInvites();
   }
 
-  function handleCancelInvite(inviteId: string) {
-    cancelInvite(inviteId);
-    refreshInvites();
+  function handleCancelInvite(inviteId: number) {
+    apiPost("/api/kindergarten/invite/cancel", { id: inviteId })
+      .catch(() => {})
+      .finally(refreshInvites);
   }
 
   return (
@@ -227,7 +242,7 @@ export function MemberManageFeature() {
                     <div className="flex items-center gap-2 mt-2.5 pt-2.5" style={{ borderTop: "1px solid #F3F4F6" }}>
                       <select
                         value={inviteClassId}
-                        onChange={(e) => setInviteClassId(e.target.value)}
+                        onChange={(e) => setInviteClassId(e.target.value ? Number(e.target.value) : "")}
                         className="flex-1 rounded-lg px-2.5 py-1.5 text-xs outline-none"
                         style={{ background: "var(--input-background)", border: "1px solid rgba(232,121,160,0.2)", color: "#6B3580" }}
                       >
@@ -256,26 +271,30 @@ export function MemberManageFeature() {
           <div className="mb-4">
             <p className="text-xs font-bold mb-2.5" style={{ color: "#6B3580" }}>보낸 초대 · {sentInvites.length}건</p>
             <div className="space-y-2">
-              {sentInvites.map((invite) => (
-                <div key={invite.id} className="flex items-center justify-between gap-2 rounded-xl px-3.5 py-2.5" style={{ background: "#FAFAFA", border: "1px solid #F3F4F6" }}>
-                  <div className="min-w-0">
-                    <p className="text-xs font-bold truncate" style={{ color: "#3B1355" }}>
-                      {invite.targetName} <span className="font-normal" style={{ color: "#A06080" }}>· {invite.targetLoginId}</span>
-                    </p>
-                    <p className="text-[11px]" style={{ color: "#A06080" }}>{invite.className ?? "유치원 소속"} · {formatDate(invite.createdAt)}</p>
+              {sentInvites.map((invite) => {
+                const status = STATUS_MAP[invite.status];
+                const known = nameById[invite.userId];
+                return (
+                  <div key={invite.id} className="flex items-center justify-between gap-2 rounded-xl px-3.5 py-2.5" style={{ background: "#FAFAFA", border: "1px solid #F3F4F6" }}>
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold truncate" style={{ color: "#3B1355" }}>
+                        {known?.name ?? invite.userId} {known && <span className="font-normal" style={{ color: "#A06080" }}>· {known.loginId}</span>}
+                      </p>
+                      <p className="text-[11px]" style={{ color: "#A06080" }}>{formatDate(invite.createdAt)}</p>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span className="text-[11px] font-bold px-2.5 py-1 rounded-full" style={{ background: STATUS_COLOR[status].bg, color: STATUS_COLOR[status].fg }}>
+                        {STATUS_LABEL[status]}
+                      </span>
+                      {status === "pending" && (
+                        <button onClick={() => handleCancelInvite(invite.id)} title="초대 취소" className="w-6 h-6 rounded-full flex items-center justify-center transition-colors hover:bg-black/[0.04]">
+                          <X className="w-3.5 h-3.5" style={{ color: "#F87171" }} />
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <span className="text-[11px] font-bold px-2.5 py-1 rounded-full" style={{ background: STATUS_COLOR[invite.status].bg, color: STATUS_COLOR[invite.status].fg }}>
-                      {STATUS_LABEL[invite.status]}
-                    </span>
-                    {invite.status === "pending" && (
-                      <button onClick={() => handleCancelInvite(invite.id)} title="초대 취소" className="w-6 h-6 rounded-full flex items-center justify-center transition-colors hover:bg-black/[0.04]">
-                        <X className="w-3.5 h-3.5" style={{ color: "#F87171" }} />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}

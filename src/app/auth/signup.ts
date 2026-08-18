@@ -11,9 +11,17 @@ export async function registerUser(payload: SignupPayload): Promise<AuthUser> {
     p.set("email", payload.email);
     p.set("password", payload.password);
     p.set("phone", payload.phone);
-    p.set("postcode", payload.zonecode || '');
-    p.set("address", payload.address || '');
-    p.set("addressDetail", payload.addressDetail || '');
+    p.set("accountType", payload.accountType === "child" ? "CHILD" : "ADULT");
+    if (payload.accountType === "child") {
+        if (payload.birthDate) p.set("birthDate", payload.birthDate);
+        if (payload.gender) p.set("gender", payload.gender === "male" ? "MALE" : "FEMALE");
+        if (payload.guardianName) p.set("guardianName", payload.guardianName);
+        if (payload.guardianPhone) p.set("guardianPhone", payload.guardianPhone);
+    } else {
+        p.set("postcode", payload.zonecode || '');
+        p.set("address", payload.address || '');
+        p.set("addressDetail", payload.addressDetail || '');
+    }
 
     const f = await fetch('/api/user/create', {
         method: "POST",
@@ -35,7 +43,12 @@ export async function registerUser(payload: SignupPayload): Promise<AuthUser> {
             loginId: payload.loginId,
             email: payload.email,
             provider: "email",
-            joinedAt
+            joinedAt,
+            accountType: payload.accountType,
+            birthDate: payload.birthDate,
+            gender: payload.gender,
+            guardianName: payload.guardianName,
+            guardianPhone: payload.guardianPhone,
         };
     }
 
@@ -57,7 +70,12 @@ export async function registerUser(payload: SignupPayload): Promise<AuthUser> {
         loginId: payload.loginId,
         email: payload.email,
         provider: "email",
-        joinedAt
+        joinedAt,
+        accountType: payload.accountType,
+        birthDate: payload.birthDate,
+        gender: payload.gender,
+        guardianName: payload.guardianName,
+        guardianPhone: payload.guardianPhone,
     };
 }
 
@@ -69,7 +87,22 @@ export interface KindergartenRegisterPayload {
     businessRegNo: string;
 }
 
-export function registerKindergarten(payload: KindergartenRegisterPayload): KindergartenInfo {
+export async function registerKindergarten(payload: KindergartenRegisterPayload): Promise<KindergartenInfo> {
+    const p = new URLSearchParams();
+    p.set("name", payload.name);
+    p.set("brn", payload.businessRegNo);
+    p.set("address", payload.address);
+    p.set("addressDetail", payload.addressDetail);
+    p.set("postcode", payload.zonecode);
+    await fetch('/api/kindergarten/create', {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        credentials: 'include',
+        body: p
+    });
+
     const info: KindergartenInfo = {
         id: -1,
         name: payload.name,
@@ -78,30 +111,14 @@ export function registerKindergarten(payload: KindergartenRegisterPayload): Kind
         addressDetail: payload.addressDetail,
         businessRegNo: payload.businessRegNo,
     };
-    const p = new URLSearchParams();
-    p.set("name", payload.name);
-    p.set("brn", payload.businessRegNo);
-    p.set("address", payload.address);
-    p.set("addressDetail", payload.addressDetail);
-    p.set("postcode", payload.zonecode);
-    fetch('/api/kindergarten/create', {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded"
-        },
-        credentials: 'include',
-        body: p
-    }).then(() => {
-        fetch('/api/kindergarten/info?brn=' + payload.businessRegNo, {
-            method: "GET",
-            credentials: 'include'
-        }).then((r) => r.json()).then((r) => {
-            if (r.status == 'success') {
-                info.id = r.data.id;
-            }
-            console.log(JSON.stringify(info));
-            console.log(JSON.stringify(r));
-        });
+
+    const f = await fetch('/api/kindergarten/info?brn=' + payload.businessRegNo, {
+        method: "GET",
+        credentials: 'include'
     });
+    const r = await f.json();
+    if (r.status === 'success') {
+        info.id = r.data.id;
+    }
     return info;
 }

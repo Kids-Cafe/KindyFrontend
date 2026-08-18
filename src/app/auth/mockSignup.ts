@@ -289,11 +289,34 @@ export function searchUsersByLoginId(query: string): UserSearchResult[] {
     }));
 }
 
-/** 유치원 이름으로 검색합니다. 동명 유치원을 구분할 수 있도록 주소도 함께 반환됩니다. */
-export function searchKindergartens(query: string): KindergartenInfo[] {
+interface KindergartenListDTO {
+  id: number;
+  name: string;
+  brn: string;
+  address: string;
+  addressDetail: string;
+  postcode: string;
+}
+
+/**
+ * 유치원 이름으로 검색합니다. 백엔드 `/api/kindergarten/list`에는 필터 파라미터가 없어
+ * 전체 목록을 받아 이름으로 걸러냅니다(유치원 수가 많아지면 서버에 검색 파라미터를
+ * 추가하는 게 낫습니다). 실패하면(백엔드가 없는 환경 등) 목업 목록으로 대신합니다.
+ */
+export async function searchKindergartens(query: string): Promise<KindergartenInfo[]> {
   const normalized = query.trim();
   if (!normalized) return [];
-  return readKindergartens().filter((kg) => kg.name.includes(normalized));
+  try {
+    const res = await fetch("/api/kindergarten/list", { method: "GET", credentials: "include" });
+    const body = await res.json();
+    if (body.status !== "success") throw new Error(body.code);
+    const list = body.data as KindergartenListDTO[];
+    return list
+      .filter((kg) => kg.name.includes(normalized))
+      .map((kg) => ({ id: kg.id, name: kg.name, zonecode: kg.postcode, address: kg.address, addressDetail: kg.addressDetail, businessRegNo: kg.brn }));
+  } catch {
+    return readKindergartens().filter((kg) => kg.name.includes(normalized));
+  }
 }
 
 export function getKindergartenById(id: number): KindergartenInfo | undefined {

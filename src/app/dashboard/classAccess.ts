@@ -9,7 +9,7 @@ import type { DashboardData, PermissionKey } from "@/app/dashboard/types";
  */
 
 /** 학부모/아이처럼 반을 고를 수 없는 역할이 묶여 있는 반입니다. 고를 수 있으면 undefined. */
-export function getLockedClassId(data: DashboardData): string | undefined {
+export function getLockedClassId(data: DashboardData): number | undefined {
   if (data.role === "parent") return data.myChild?.classId;
   if (data.role === "child") return data.me?.classId;
   return undefined;
@@ -37,7 +37,7 @@ export function teacherHasPermission(data: DashboardData, permission: Permission
  */
 export function canManageClass(
   data: DashboardData,
-  classId: string | undefined,
+  classId: number | undefined,
   elevatedPermission: PermissionKey,
 ): boolean {
   if (!classId) return false;

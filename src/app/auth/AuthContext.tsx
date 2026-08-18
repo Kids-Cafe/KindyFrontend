@@ -140,7 +140,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // kindergarten: record.kindergarten,
         onboardingCompleted: t.data.onboardingCompleted
       };
-      setSession({ user: user, accessToken: newId(), expiresAt: Date.now() + SESSION_TTL_MS });
+      setSession({ user: user, accessToken: String(newId()), expiresAt: Date.now() + SESSION_TTL_MS });
       return true;
     } catch (cause) {
       console.error("[Kindy] 로그인 처리 실패", cause);

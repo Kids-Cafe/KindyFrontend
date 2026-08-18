@@ -194,6 +194,8 @@ export interface MemberChatThread {
 /** 유치원 공지사항입니다. 원장만 작성/수정/고정/삭제할 수 있고, 나머지 역할은 읽기 전용입니다. */
 export interface NoticeRecord {
   id: number;
+  /** 서버가 공지 수정(`notice/edit`)에 요구하는 유치원별 일련번호입니다. 서버에서 온 공지가 아니면 없습니다. */
+  num?: number;
   kindergartenId: number;
   title: string;
   body: string;
@@ -201,7 +203,7 @@ export interface NoticeRecord {
   /** epoch ms */
   createdAt: number;
   pinned: boolean;
-  /** 켜져 있으면 전 계정 대시보드 상단 배너로 노출됩니다. */
+  /** 켜져 있으면 전 계정 대시보드 상단 배너로 노출됩니다. 서버에 아직 저장되는 필드가 아니라 새로고침하면 초기화됩니다. */
   bannerEnabled: boolean;
 }
 

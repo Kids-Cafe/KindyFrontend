@@ -12,7 +12,6 @@ import {
   isValidBirthDate,
   isMockVerificationCodeValid,
 } from "@/app/auth/validation";
-import { registerMockUser } from "@/app/auth/mockSignup";
 import { SESSION_TTL_MS } from "@/app/auth/storage";
 import { openAddressSearch } from "@/app/auth/addressSearch";
 import type { StudentGender } from "@/app/auth/types";
@@ -276,12 +275,12 @@ export function SignupScreen({
       window.alert("회원가입에 실패했습니다.");
       return;
     }
-    setSession({ user, accessToken: newId(), expiresAt: Date.now() + SESSION_TTL_MS });
+    setSession({ user, accessToken: String(newId()), expiresAt: Date.now() + SESSION_TTL_MS });
     onSignedUp();
   }
 
   async function completeChildSignup() {
-    const user = await registerMockUser({
+    const user = await registerUser({
       name: childForm.name.trim(),
       loginId: childForm.loginId.trim(),
       email: childForm.loginId.trim(),
@@ -293,7 +292,11 @@ export function SignupScreen({
       guardianName: guardianName.trim(),
       guardianPhone: guardianPhone.trim(),
     });
-    setSession({ user, accessToken: newId(), expiresAt: Date.now() + SESSION_TTL_MS });
+    if (user.id == "") {
+      window.alert("회원가입에 실패했습니다.");
+      return;
+    }
+    setSession({ user, accessToken: String(newId()), expiresAt: Date.now() + SESSION_TTL_MS });
     onSignedUp();
   }
 

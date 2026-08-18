@@ -29,9 +29,10 @@ function formatDate(ms: number): string {
  * 사진 id로 결정론적인 회전각을 만듭니다. 무작위로 하면 리렌더마다 각도가 바뀌어
  * 사진이 덜덜 떨리므로, 같은 사진은 항상 같은 각도로 기울어 있게 합니다.
  */
-function rotationForId(id: string): number {
+function rotationForId(id: number): number {
+  const s = String(id);
   let hash = 0;
-  for (let i = 0; i < id.length; i += 1) hash = (hash * 31 + id.charCodeAt(i)) % 1000;
+  for (let i = 0; i < s.length; i += 1) hash = (hash * 31 + s.charCodeAt(i)) % 1000;
   return (hash % 13) - 6;
 }
 
@@ -182,8 +183,8 @@ export function PhotoAlbumFeature() {
 
   // 담임 반이 없는 교사("유치원 소속")는 classId가 빈 문자열이라 `??`로 걸러지지 않습니다.
   // 그런 경우엔 첫 번째 반을 기본으로 보여줍니다.
-  const [selectedClassId, setSelectedClassId] = useState<string | undefined>(
-    () => lockedClassId || (data.role === "teacher" ? data.teacher.classId : "") || data.classes[0]?.id,
+  const [selectedClassId, setSelectedClassId] = useState<number | undefined>(
+    () => lockedClassId || (data.role === "teacher" ? data.teacher.classId : undefined) || data.classes[0]?.id,
   );
   const activeClassId = lockedClassId ?? selectedClassId;
 
@@ -191,7 +192,7 @@ export function PhotoAlbumFeature() {
   const canManageHere = canManageClass(data, activeClassId, "managePhotos");
 
   const photos = useMemo(
-    () => data.photos.filter((p) => p.scopeId === activeClassId).sort((a, b) => b.takenAt - a.takenAt),
+    () => data.photos.filter((p) => p.classId === activeClassId).sort((a, b) => b.takenAt - a.takenAt),
     [data.photos, activeClassId],
   );
 
@@ -212,12 +213,7 @@ export function PhotoAlbumFeature() {
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") addPhoto(reader.result, getDisplayName(user), activeClassId, uploadTheme);
-    };
-    reader.onerror = () => setUploadError("사진을 읽지 못했어요. 다시 시도해주세요.");
-    reader.readAsDataURL(file);
+    addPhoto(file, getDisplayName(user), activeClassId, uploadTheme);
   }
 
   return (
