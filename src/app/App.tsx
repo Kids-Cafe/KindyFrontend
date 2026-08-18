@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useState } from "react";
+import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import { SplashIntro } from "@/app/sections/SplashIntro";
 import { Navbar } from "@/app/sections/Navbar";
 import { HeroSection } from "@/app/sections/HeroSection";
@@ -63,7 +63,21 @@ export default function App() {
   const [authFlow, setAuthFlow] = useState<AuthFlow>(null);
   const [showMyPage, setShowMyPage] = useState(false);
 
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, user, sessionExpired } = useAuth();
+
+  // 세션이 만료돼 자동 로그아웃되면 열려 있던 모달(마이페이지·온보딩)을 닫고,
+  // 사용자가 안내를 확인한 뒤에는 바로 로그인 화면으로 이어줍니다.
+  const wasSessionExpired = useRef(false);
+  useEffect(() => {
+    if (sessionExpired) {
+      wasSessionExpired.current = true;
+      setAuthFlow(null);
+      setShowMyPage(false);
+    } else if (wasSessionExpired.current) {
+      wasSessionExpired.current = false;
+      setAuthFlow("login");
+    }
+  }, [sessionExpired]);
 
   // 로그인에 성공하면 로그인 모달을 닫습니다. 온보딩을 마치지 못한 계정이면
   // 홈페이지 대신 온보딩으로 보내 계정 종류(아동/선생님/학부모)에 맞는

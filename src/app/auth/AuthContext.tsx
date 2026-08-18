@@ -1,9 +1,18 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { beginSocialLogin } from "@/app/auth/oauth";
 import { SESSION_TTL_MS, clearSession, loadSession, saveSession } from "@/app/auth/storage";
 import type { AuthSession, AuthUser, SocialProviderId } from "@/app/auth/types";
-import { ApiError, apiGet, apiPost } from "@/app/lib/api";
+import {
+  ApiError,
+  SERVER_SESSION_IDLE_MS,
+  apiGet,
+  apiPost,
+  checkSessionAlive,
+  getLastActivityAt,
+  onSessionExpired,
+} from "@/app/lib/api";
+import { SessionExpiredDialog } from "@/app/auth/SessionExpiredDialog";
 import type { PlainUserDTO } from "@/app/lib/dto";
 import { newId } from "@/app/lib/id";
 
@@ -58,6 +67,10 @@ interface AuthContextValue {
   updateProfile: (partial: Partial<AuthUser>) => void;
   setError: (message: string | null) => void;
   logout: () => void;
+  /** 서버 세션이 끊겨서 자동으로 로그아웃된 직후인지. 안내 모달을 띄우는 데 씁니다. */
+  sessionExpired: boolean;
+  /** 안내를 사용자가 닫았을 때 호출합니다. */
+  dismissSessionExpired: () => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -73,6 +86,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [pendingProvider, setPendingProvider] = useState<SocialProviderId | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSubmittingPassword, setIsSubmittingPassword] = useState(false);
+  const [sessionExpired, setSessionExpired] = useState(false);
+
+  // 타이머/구독 콜백에서 최신 세션을 보기 위한 거울입니다(콜백을 다시 만들지 않으려고).
+  const sessionRef = useRef<AuthSession | null>(null);
+  useEffect(() => {
+    sessionRef.current = session;
+  }, [session]);
 
   // 최초 마운트 시 저장된 세션을 복원합니다.
   useEffect(() => {
@@ -95,7 +115,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSessionState(next);
     setError(null);
     setPendingProvider(null);
+    setSessionExpired(false);
   }, []);
+
+  /**
+   * 서버 세션이 끊긴 것이 확인됐을 때의 정리입니다.
+   *
+   * 로컬 세션만 남아 있으면 화면은 로그인된 것처럼 보이는데 모든 API가
+   * `INVALID_ACCESS`로 실패합니다. 그 상태로 두지 않고 즉시 로그아웃시킨 뒤
+   * 왜 튕겼는지 안내합니다. (서버 세션은 이미 없으므로 logout 요청은 보내지 않습니다.)
+   */
+  const expireSession = useCallback(() => {
+    // 이미 비로그인 상태라면(직접 로그아웃한 직후 등) 굳이 안내하지 않습니다.
+    if (!sessionRef.current) return;
+    clearSession();
+    setSessionState(null);
+    setSessionExpired(true);
+  }, []);
+
+  useEffect(() => onSessionExpired(expireSession), [expireSession]);
 
   const loginWith = useCallback(async (provider: SocialProviderId) => {
     setError(null);
@@ -162,7 +200,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     clearSession();
     setSessionState(null);
     setError(null);
+    // 사용자가 스스로 나간 것이므로 "세션이 만료됐어요" 안내는 띄우지 않습니다.
+    setSessionExpired(false);
   }, []);
+
+  const dismissSessionExpired = useCallback(() => setSessionExpired(false), []);
+
+  /**
+   * 서버 세션이 아직 살아있는지 확인하고, 끊겼으면 로그아웃시킵니다.
+   * 요청이 실패할 때(=INVALID_ACCESS)만 알아채면 늦으므로, 아래 두 시점에서 미리 확인합니다.
+   */
+  const verifySession = useCallback(async () => {
+    if (!sessionRef.current) return;
+    if (!(await checkSessionAlive())) expireSession();
+  }, [expireSession]);
+
+  // ① 앱을 열 때(=저장된 세션을 복원한 직후). 어제 열어둔 탭을 다시 여는 경우가 여기 해당합니다.
+  useEffect(() => {
+    if (isLoading || !session) return;
+    void verifySession();
+    // 복원 직후 한 번만 확인하면 됩니다. 이후는 아래 감시자가 맡습니다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading]);
+
+  // ② 아무 요청 없이 서버의 무활동 한도를 넘겼을 때. 화면을 다시 볼 때도 함께 확인합니다.
+  useEffect(() => {
+    if (!session) return;
+
+    const checkIfIdle = () => {
+      if (Date.now() - getLastActivityAt() < SERVER_SESSION_IDLE_MS) return;
+      void verifySession();
+    };
+
+    const timer = window.setInterval(checkIfIdle, 60 * 1000);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") checkIfIdle();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
+  }, [session, verifySession]);
 
   // 세션 만료는 `loadSession()`이 앱을 열 때만 검사합니다. 탭을 며칠씩 켜 두는
   // 사용자를 위해 만료 시각에 맞춰 한 번 더 정리해 줍니다.
@@ -194,11 +276,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       updateProfile,
       setError,
       logout,
+      sessionExpired,
+      dismissSessionExpired,
     }),
-    [session, isLoading, pendingProvider, error, loginWith, loginWithPassword, isSubmittingPassword, setSession, updateProfile, logout],
+    [session, isLoading, pendingProvider, error, loginWith, loginWithPassword, isSubmittingPassword, setSession, updateProfile, logout, sessionExpired, dismissSessionExpired],
   );
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+      {/* 어느 화면에 있든(랜딩·대시보드·모달) 만료 안내가 보이도록 여기서 렌더합니다. */}
+      <SessionExpiredDialog open={sessionExpired} onClose={dismissSessionExpired} />
+    </AuthContext.Provider>
+  );
 }
 
 /** 어디서든 인증 상태를 꺼내 쓰는 훅입니다. */
