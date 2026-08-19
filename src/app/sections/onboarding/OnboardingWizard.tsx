@@ -135,7 +135,7 @@ export function OnboardingWizard({ onComplete }: { onComplete: () => void }) {
           <KindergartenRegisterStep
             onSubmit={async (payload) => {
               const kindergarten = await registerKindergarten(payload);
-              finish({ role: "teacher", teacherRole: "director", kindergarten });
+              await finish({ role: "teacher", teacherRole: "director", kindergarten });
             }}
           />
         )}

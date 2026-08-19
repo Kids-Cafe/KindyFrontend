@@ -6,6 +6,8 @@ import {
 import { useAuth } from "@/app/auth/AuthContext";
 import { changePassword, verifyCurrentPassword } from "@/app/auth/password";
 import { requestJoinKindergarten, searchKindergartens } from "@/app/auth/kindergartenSearch";
+import { registerKindergarten } from "@/app/auth/signup";
+import { KindergartenRegisterForm } from "@/app/auth/KindergartenRegisterForm";
 import { isPasswordValid } from "@/app/auth/validation";
 import { ReceivedInvites } from "@/app/auth/ReceivedInvites";
 import type { InviteTargetRole } from "@/app/auth/ReceivedInvites";
@@ -120,7 +122,16 @@ function Toast({ message }: { message: string | null }) {
 }
 
 /** 마이페이지 서브패널 콘텐츠입니다. 실제 계정 설정 화면처럼 각 항목을 별도 화면으로 분리했습니다. */
-function MyPagePanel({ panel, onDone }: { panel: MenuKey; onDone: (message?: string) => void }) {
+function MyPagePanel({
+  panel,
+  onDone,
+  onMembershipsChanged,
+}: {
+  panel: MenuKey;
+  onDone: (message?: string) => void;
+  /** 소속 유치원 목록이 달라졌을 때(직접 등록 등) 대시보드가 다시 받아오도록 알립니다. */
+  onMembershipsChanged?: () => void;
+}) {
   const { user, updateProfile, logout } = useAuth();
   const store = useDashboardStoreOptional();
   const voice = useChildVoiceSettings(user?.id ?? "unknown");
@@ -140,6 +151,8 @@ function MyPagePanel({ panel, onDone }: { panel: MenuKey; onDone: (message?: str
   const [childNickname, setChildNickname] = useState(store?.data.myChild?.nickname ?? "");
   const [kinderQuery, setKinderQuery] = useState("");
   const [kinderResults, setKinderResults] = useState<KindergartenInfo[]>([]);
+  /** 유치원 검색 아래의 "직접 등록" 폼을 펼쳤는지. 기본은 접어 두고 검색을 먼저 권합니다. */
+  const [showRegister, setShowRegister] = useState(false);
   const [confirmWithdraw, setConfirmWithdraw] = useState(false);
   const [notifyNotices, setNotifyNotices] = useState(true);
   const [notifySchedule, setNotifySchedule] = useState(true);
@@ -308,6 +321,8 @@ function MyPagePanel({ panel, onDone }: { panel: MenuKey; onDone: (message?: str
 
     case "kindergartenClass": {
       const inviteRole: InviteTargetRole = user.accountType === "child" ? "child" : user.role === "teacher" ? "teacher" : "parent";
+      // 유치원 등록은 사업자등록번호가 필요한 원장의 일이라 성인 계정에서만 열어 둡니다.
+      const canRegisterKindergarten = user.accountType !== "child";
       return (
         <div className="space-y-4">
           <ReceivedInvites role={inviteRole} onAccepted={() => onDone("유치원 초대를 수락했어요")} />
@@ -358,6 +373,45 @@ function MyPagePanel({ panel, onDone }: { panel: MenuKey; onDone: (message?: str
               ))}
             </div>
           </div>
+
+          {canRegisterKindergarten && (
+            <div className="pt-4" style={{ borderTop: "1px solid #F3F4F6" }}>
+              {showRegister ? (
+                <>
+                  <FieldLabel>새 유치원 등록</FieldLabel>
+                  <p className="text-xs mb-3" style={{ color: "#9CA3AF" }}>
+                    등록한 계정이 곧 원장이 돼요. 사업자등록번호가 필요해요.
+                  </p>
+                  <KindergartenRegisterForm
+                    dense
+                    submitLabel="유치원 등록하기"
+                    onSubmit={async (payload) => {
+                      const kindergarten = await registerKindergarten(payload);
+                      // 만든 사람이 곧 소유자라 가입 요청 없이 바로 원장이 됩니다.
+                      await updateProfile({ role: "teacher", teacherRole: "director", kindergarten });
+                      onMembershipsChanged?.();
+                      onDone(`${kindergarten.name}을(를) 등록했어요. 이제 원장으로 관리할 수 있어요.`);
+                    }}
+                  />
+                  <button
+                    onClick={() => setShowRegister(false)}
+                    className="w-full mt-2 text-xs font-bold py-2"
+                    style={{ color: "#9CA3AF" }}
+                  >
+                    취소
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => setShowRegister(true)}
+                  className="w-full rounded-2xl text-xs font-bold py-3 transition-transform active:scale-[0.98]"
+                  style={{ background: "rgba(232,121,160,0.1)", color: "#E879A0", border: "1.5px solid #FBCFE8" }}
+                >
+                  찾는 유치원이 없나요? 유치원 직접 등록하기
+                </button>
+              )}
+            </div>
+          )}
         </div>
       );
     }
@@ -494,7 +548,14 @@ function MyPagePanel({ panel, onDone }: { panel: MenuKey; onDone: (message?: str
  * 로그인한 사용자의 마이페이지 모달입니다.
  * 목록 화면에서 항목을 고르면 실제 서비스처럼 세부 설정 화면으로 전환됩니다.
  */
-export function MyPage({ onClose }: { onClose: () => void }) {
+export function MyPage({
+  onClose,
+  onMembershipsChanged,
+}: {
+  onClose: () => void;
+  /** 마이페이지에서 유치원을 새로 등록/가입해 소속이 달라졌을 때 호출됩니다. */
+  onMembershipsChanged?: () => void;
+}) {
   const { user, logout } = useAuth();
   const displayName = useDisplayName();
   const [activePanel, setActivePanel] = useState<MenuKey | null>(null);
@@ -532,7 +593,7 @@ export function MyPage({ onClose }: { onClose: () => void }) {
               <p className="font-bold text-base" style={{ color: "#1F0A3C" }}>{activeMeta?.label}</p>
             </div>
             <div className="px-6 py-6">
-              <MyPagePanel panel={activePanel} onDone={showToast} />
+              <MyPagePanel panel={activePanel} onDone={showToast} onMembershipsChanged={onMembershipsChanged} />
             </div>
           </>
         ) : (

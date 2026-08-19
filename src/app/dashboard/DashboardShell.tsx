@@ -32,7 +32,8 @@ import { PhotoAlbumFeature } from "@/app/dashboard/features/PhotoAlbumFeature";
 import { ChildScheduleAnnouncer } from "@/app/dashboard/features/ChildScheduleAnnouncer";
 import { RecommendationsFeature } from "@/app/dashboard/features/RecommendationsFeature";
 
-function DashboardBody() {
+/** @param onMembershipsChanged 마이페이지에서 유치원을 새로 등록/가입했을 때 워크스페이스 목록을 다시 받게 합니다. */
+function DashboardBody({ onMembershipsChanged }: { onMembershipsChanged: () => void }) {
   const { user } = useAuth();
   const { data, workspaces, activeWorkspaceId, switchWorkspace } = useDashboardStore();
   const features = FEATURES_BY_ROLE[data.role];
@@ -233,7 +234,7 @@ function DashboardBody() {
         <StudentInfoDialog childId={openStudentId} onClose={() => setOpenStudentId(null)} onStartChat={openStudentChat} />
       )}
       <MemberProfilePanel teacherId={openTeacherId} onClose={() => setOpenTeacherId(null)} />
-      {showMyPage && <MyPage onClose={() => setShowMyPage(false)} />}
+      {showMyPage && <MyPage onClose={() => setShowMyPage(false)} onMembershipsChanged={onMembershipsChanged} />}
     </div>
   );
 }
@@ -299,7 +300,9 @@ function EmptyWorkspaceScreen({ onJoined }: { onJoined: () => void }) {
       </div>
 
       {/* 마이페이지에서 유치원에 가입했을 수도 있으니 닫을 때 한 번 더 확인합니다. */}
-      {showMyPage && <MyPage onClose={() => { setShowMyPage(false); onJoined(); }} />}
+      {showMyPage && (
+        <MyPage onClose={() => { setShowMyPage(false); onJoined(); }} onMembershipsChanged={onJoined} />
+      )}
     </BareScreen>
   );
 }
@@ -328,7 +331,7 @@ export function DashboardShell() {
       loading={<LoadingWorkspaceScreen />}
       empty={<EmptyWorkspaceScreen onJoined={() => setMembershipNonce((n) => n + 1)} />}
     >
-      <DashboardBody />
+      <DashboardBody onMembershipsChanged={() => setMembershipNonce((n) => n + 1)} />
     </DashboardStoreProvider>
   );
 }

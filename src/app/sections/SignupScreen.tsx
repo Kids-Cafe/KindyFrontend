@@ -734,7 +734,7 @@ export function SignupScreen({
                 </div>
               )}
               {emailVerification.sent && !emailVerification.verified && (
-                <p className="text-xs mt-1.5" style={{ color: "#9CA3AF" }}>테스트 환경이라 아무 숫자 6자리나 입력하시면 돼요</p>
+                <p className="text-xs mt-1.5" style={{ color: "#9CA3AF" }}>이메일이 발송되었어요</p>
               )}
             </Field>
             <ErrorText message={errors.email} />
