@@ -47,7 +47,7 @@ import {
   renameClassOnServer,
   setRolePermissionsOnServer,
   setMemberClassOnServer,
-  setTeacherNicknameOnServer,
+  setMemberNicknameOnServer,
   setTeacherRoleOnServer,
   updateNoticeOnServer,
   updatePhotoOnServer,
@@ -130,9 +130,11 @@ interface DashboardStoreValue {
   addParentNote: (childId: string, authorName: string, text: string) => void;
   addParentNoteComment: (childId: string, noteId: number, authorName: string, authorRole: DashboardData["role"], text: string) => void;
 
-  /** 유치원 안에서 통용되는 별칭을 바꿉니다. */
-  updateChildNickname: (childId: string, nickname: string) => void;
-  updateTeacherNickname: (teacherId: string, nickname: string) => void;
+  /** 유치원 안에서 통용되는 별칭을 바꿉니다. 계정이 아니라 이 유치원에서만 쓰는 이름입니다. */
+  updateChildNickname: (childId: string, nickname: string) => Promise<void>;
+  updateTeacherNickname: (teacherId: string, nickname: string) => Promise<void>;
+  /** 로그인한 본인이 이 유치원에서 쓸 별칭을 바꿉니다. 서버 저장에 실패하면 던집니다. */
+  setMyNickname: (nickname: string) => Promise<void>;
   /** 멤버(아이·교사)를 반에 배정하거나 해제합니다(MANAGE_CLASS 필요). */
   assignMemberClass: (userId: string, classId: number | undefined) => void;
   sendMemberMessage: (teacherId: string, senderRole: ChatSender, senderName: string, text: string) => void;
@@ -210,7 +212,12 @@ export function DashboardStoreProvider({
               /* 이름만으로도 워크스페이스는 띄울 수 있습니다. */
             }
             const role = roleFromRelationship(membership, isOwner, user);
-            return [String(membership.kindergartenId), emptyDashboardData(user, kindergarten, role)] as const;
+            // 별칭은 유치원마다 다릅니다. 멤버 목록을 받기 전에도 제 이름으로 불리도록
+            // 관계에 붙어 온 별칭을 그대로 넘깁니다.
+            return [
+              String(membership.kindergartenId),
+              emptyDashboardData(user, kindergarten, role, membership.nickname),
+            ] as const;
           }),
         );
         if (cancelled) return;
@@ -564,33 +571,52 @@ export function DashboardStoreProvider({
   );
 
   // ---- 별칭 ----
+  // 별칭은 계정이 아니라 이 유치원과의 관계에 붙습니다. 서버에 먼저 저장하고,
+  // 성공했을 때만 화면의 모든 사본(멤버 목록·내 자리·내 별칭)을 함께 고칩니다.
+  const applyNickname = useCallback(
+    (userId: string, nickname: string) => {
+      setData((prev) => ({
+        ...prev,
+        myNickname: userId === user?.id ? nickname || undefined : prev.myNickname,
+        me: prev.me?.id === userId ? { ...prev.me, nickname: nickname || prev.me.name } : prev.me,
+        myChild: prev.myChild?.id === userId ? { ...prev.myChild, nickname: nickname || prev.myChild.name } : prev.myChild,
+        classChildren: prev.classChildren.map((c) => (c.id === userId ? { ...c, nickname: nickname || c.name } : c)),
+        myClassChildren: prev.myClassChildren?.map((c) => (c.id === userId ? { ...c, nickname: nickname || c.name } : c)),
+        teacher: prev.teacher.id === userId ? { ...prev.teacher, nickname: nickname || undefined } : prev.teacher,
+        teachers: prev.teachers.map((t) => (t.id === userId ? { ...t, nickname: nickname || undefined } : t)),
+      }));
+    },
+    [setData, user?.id],
+  );
+
   const updateChildNickname = useCallback(
     async (childId: string, nickname: string) => {
       const trimmed = nickname.trim();
       if (!trimmed) return;
-      await setTeacherNicknameOnServer(kindergartenId, childId, trimmed);
-      setData((prev) => ({
-        ...prev,
-        me: prev.me?.id === childId ? { ...prev.me, nickname: trimmed } : prev.me,
-        myChild: prev.myChild?.id === childId ? { ...prev.myChild, nickname: trimmed } : prev.myChild,
-        classChildren: prev.classChildren.map((c) => (c.id === childId ? { ...c, nickname: trimmed } : c)),
-        myClassChildren: prev.myClassChildren?.map((c) => (c.id === childId ? { ...c, nickname: trimmed } : c)),
-      }));
+      await setMemberNicknameOnServer(kindergartenId, childId, trimmed);
+      applyNickname(childId, trimmed);
     },
-    [kindergartenId, setData],
+    [kindergartenId, applyNickname],
   );
 
   const updateTeacherNickname = useCallback(
     async (teacherId: string, nickname: string) => {
       const trimmed = nickname.trim();
-      await setTeacherNicknameOnServer(kindergartenId, teacherId, trimmed);
-      setData((prev) => ({
-        ...prev,
-        teacher: prev.teacher.id === teacherId ? { ...prev.teacher, nickname: trimmed || undefined } : prev.teacher,
-        teachers: prev.teachers.map((t) => (t.id === teacherId ? { ...t, nickname: trimmed || undefined } : t)),
-      }));
+      await setMemberNicknameOnServer(kindergartenId, teacherId, trimmed);
+      applyNickname(teacherId, trimmed);
     },
-    [kindergartenId, setData],
+    [kindergartenId, applyNickname],
+  );
+
+  /** 로그인한 본인이 이 유치원에서 쓸 별칭을 바꿉니다(마이페이지 "별칭 변경"). */
+  const setMyNickname = useCallback(
+    async (nickname: string) => {
+      if (!user) return;
+      const trimmed = nickname.trim();
+      await setMemberNicknameOnServer(kindergartenId, user.id, trimmed);
+      applyNickname(user.id, trimmed);
+    },
+    [kindergartenId, applyNickname, user],
   );
 
   const assignMemberClass = useCallback(
@@ -763,6 +789,7 @@ export function DashboardStoreProvider({
       addParentNoteComment,
       updateChildNickname,
       updateTeacherNickname,
+      setMyNickname,
       assignMemberClass,
       sendMemberMessage,
       addHomeWidget,
@@ -802,6 +829,7 @@ export function DashboardStoreProvider({
       addParentNoteComment,
       updateChildNickname,
       updateTeacherNickname,
+      setMyNickname,
       assignMemberClass,
       sendMemberMessage,
       addHomeWidget,

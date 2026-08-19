@@ -49,7 +49,7 @@ export function OnboardingWizard({ onComplete }: { onComplete: () => void }) {
    * 만든 유치원은 `registerKindergarten`의 create 호출이 곧 소유자 등록이라 false로 넘깁니다.
    */
   async function finish(partial: Partial<AuthUser>, join?: { type: "CHILD" | "TEACHER" }) {
-    updateProfile({ ...partial, onboardingCompleted: true });
+    await updateProfile({ ...partial, onboardingCompleted: true });
 
     const kindergartenId = partial.kindergarten?.id;
     if (kindergartenId && kindergartenId > 0) {
@@ -57,12 +57,13 @@ export function OnboardingWizard({ onComplete }: { onComplete: () => void }) {
         // 가입은 곧바로 멤버가 되는 게 아니라 "가입 요청"을 남깁니다.
         // 원장이 수락해야 관계가 생기므로, 여기서 별칭까지 정해 줄 수는 없습니다.
         await apiPost("/api/kindergarten/join", { id: kindergartenId, type: join.type }).catch(() => {});
-      } else if (partial.nickname) {
+      } else if (nickname) {
         // 방금 유치원을 만든 원장은 이미 소유자로 등록돼 있어 별칭을 바로 지을 수 있습니다.
+        // 별칭은 계정이 아니라 이 유치원과의 관계에 저장되므로 여기서만 보낼 수 있습니다.
         await apiPost("/api/kindergarten/setNickname", {
           id: kindergartenId,
           userId: user!.id,
-          nickname: partial.nickname,
+          nickname,
         }).catch(() => {});
       }
     }
@@ -114,8 +115,9 @@ export function OnboardingWizard({ onComplete }: { onComplete: () => void }) {
           <NicknameStep
             greetingName={user?.name ?? ""}
             onConfirm={(name) => {
+              // 아직 소속된 유치원이 없어 저장할 곳이 없습니다. 유치원이 정해지는
+              // 마지막 단계(`finish`)에서 그 유치원의 별칭으로 저장합니다.
               setNickname(name);
-              updateProfile({ nickname: name });
               if (role === "teacher") {
                 setStep("teacherRole");
               } else {
@@ -152,8 +154,8 @@ export function OnboardingWizard({ onComplete }: { onComplete: () => void }) {
           <>
             <ReceivedInvites role={isChildAccount ? "child" : "parent"} onAccepted={() => finish({})} />
             <KindergartenSearchStep
-              onSelect={(kindergarten) => finish({ role: "parent", nickname: nickname ?? undefined, kindergarten }, { type: "CHILD" })}
-              onSkip={() => finish({ role: "parent", nickname: nickname ?? undefined })}
+              onSelect={(kindergarten) => finish({ role: "parent", kindergarten }, { type: "CHILD" })}
+              onSkip={() => finish({ role: "parent" })}
             />
           </>
         )}

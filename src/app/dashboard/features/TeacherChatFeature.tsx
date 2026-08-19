@@ -1,5 +1,5 @@
 import { useAuth } from "@/app/auth/AuthContext";
-import { getDisplayName } from "@/app/auth/getDisplayName";
+import { useDisplayName } from "@/app/auth/useDisplayName";
 import { useDashboardStore } from "@/app/dashboard/DashboardStoreContext";
 import { ThreadChatFeature } from "@/app/dashboard/features/ThreadChatFeature";
 import { ChatCaptureGuard } from "@/app/dashboard/features/ChatCaptureGuard";
@@ -11,6 +11,7 @@ import { MessagesSquare } from "lucide-react";
  */
 export function TeacherChatFeature({ targetChildId, onSelectChild }: { targetChildId: string | null; onSelectChild: (childId: string) => void }) {
   const { user } = useAuth();
+  const viewerName = useDisplayName();
   const { data } = useDashboardStore();
   const children = data.myClassChildren ?? [];
 
@@ -49,7 +50,6 @@ export function TeacherChatFeature({ targetChildId, onSelectChild }: { targetChi
     );
   }
 
-  const viewerName = getDisplayName(user);
   return (
     <ChatCaptureGuard viewerName={viewerName}>
       <ThreadChatFeature childId={targetChildId} viewerRole="teacher" viewerName={viewerName} />

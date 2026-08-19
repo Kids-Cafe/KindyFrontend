@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Info, MessagesSquare } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/app/components/ui/sheet";
 import { useAuth } from "@/app/auth/AuthContext";
-import { getDisplayName } from "@/app/auth/getDisplayName";
+import { useDisplayName } from "@/app/auth/useDisplayName";
 import { useDashboardStore } from "@/app/dashboard/DashboardStoreContext";
 import { ClassAssignSelect } from "@/app/dashboard/ClassAssignSelect";
 import { ChildFullReport } from "@/app/dashboard/features/ChildFullReport";
@@ -16,6 +16,7 @@ import { ThreadChatFeature } from "@/app/dashboard/features/ThreadChatFeature";
  */
 export function DirectorStudentPanel({ childId, onClose }: { childId: string | null; onClose: () => void }) {
   const { user } = useAuth();
+  const displayName = useDisplayName();
   const { data } = useDashboardStore();
   const child = data.classChildren.find((c) => c.id === childId);
   const [view, setView] = useState<"info" | "contact">("info");
@@ -77,7 +78,7 @@ export function DirectorStudentPanel({ childId, onClose }: { childId: string | n
               </div>
             ) : (
               <div className="flex-1 min-h-0 flex flex-col px-4 pb-4">
-                {user && <ThreadChatFeature childId={child.id} viewerRole="director" viewerName={getDisplayName(user)} />}
+                {user && <ThreadChatFeature childId={child.id} viewerRole="director" viewerName={displayName} />}
               </div>
             )}
           </>

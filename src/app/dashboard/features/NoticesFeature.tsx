@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Megaphone, Pin, Trash2, Plus, Bell, BellOff } from "lucide-react";
 import { useDashboardStore } from "@/app/dashboard/DashboardStoreContext";
 import { useAuth } from "@/app/auth/AuthContext";
-import { getDisplayName } from "@/app/auth/getDisplayName";
+import { useDisplayName } from "@/app/auth/useDisplayName";
 import { useConfirm } from "@/app/components/ConfirmDialog";
 
 function formatDateTime(ms: number): string {
@@ -16,6 +16,7 @@ function formatDateTime(ms: number): string {
  */
 export function NoticesFeature({ canManage = false }: { canManage?: boolean }) {
   const { user } = useAuth();
+  const displayName = useDisplayName();
   const { data, addNotice, togglePinNotice, toggleNoticeBanner, deleteNotice } = useDashboardStore();
   const { ask, dialog } = useConfirm();
   const [composing, setComposing] = useState(false);
@@ -27,7 +28,7 @@ export function NoticesFeature({ canManage = false }: { canManage?: boolean }) {
 
   function handleSubmit() {
     if (!title.trim() || !body.trim() || !user) return;
-    addNotice(title.trim(), body.trim(), getDisplayName(user), bannerEnabled);
+    addNotice(title.trim(), body.trim(), displayName, bannerEnabled);
     setTitle("");
     setBody("");
     setBannerEnabled(false);

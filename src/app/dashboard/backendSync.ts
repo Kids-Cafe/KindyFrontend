@@ -412,8 +412,14 @@ export async function setTeacherRoleOnServer(
   await apiPost(path, { id: kindergartenId, userId: teacherId, roleId });
 }
 
-export async function setTeacherNicknameOnServer(kindergartenId: number, teacherId: string, nickname: string): Promise<void> {
-  await apiPost("/api/kindergarten/setNickname", { id: kindergartenId, userId: teacherId, nickname });
+/**
+ * 유치원 안에서 통용되는 별칭을 서버에 저장합니다(T_RELATIONSHIP.NICKNAME).
+ * 계정 전체가 아니라 이 유치원에서만 쓰는 이름이라, 유치원 아이디가 반드시 필요합니다.
+ * 아이·교사 모두 관계 한 행이므로 같은 엔드포인트를 씁니다. 본인이면 언제나,
+ * 남의 별칭을 바꾸려면 MANAGE_MEMBER가 필요합니다.
+ */
+export async function setMemberNicknameOnServer(kindergartenId: number, userId: string, nickname: string): Promise<void> {
+  await apiPost("/api/kindergarten/setNickname", { id: kindergartenId, userId, nickname });
 }
 
 /**

@@ -42,8 +42,11 @@ export interface AuthUser {
   provider: SocialProviderId | "email";
   /** ISO 8601 문자열 */
   joinedAt: string;
-  /** 온보딩에서 정한 별칭/애칭 */
-  nickname?: string;
+  /**
+   * 별칭은 계정이 아니라 유치원마다 따로 정합니다(T_RELATIONSHIP.NICKNAME).
+   * 그래서 여기에는 없습니다 — 지금 보고 있는 유치원에서 불리는 이름은
+   * `useDisplayName()`(대시보드 스토어의 `myNickname`)에서 가져옵니다.
+   */
   role?: UserRole;
   teacherRole?: TeacherRole;
   kindergarten?: KindergartenInfo;

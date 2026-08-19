@@ -1,7 +1,7 @@
 import { PanelLeftClose, Settings } from "lucide-react";
 import { useAuth } from "@/app/auth/AuthContext";
 import { UserAvatar } from "@/app/auth/UserAvatar";
-import { getDisplayName } from "@/app/auth/getDisplayName";
+import { useDisplayName } from "@/app/auth/useDisplayName";
 import type { FeatureDef, FeatureId } from "@/app/dashboard/types";
 
 /**
@@ -26,6 +26,7 @@ export function FeatureSidebar({
   onCollapse: () => void;
 }) {
   const { user } = useAuth();
+  const displayName = useDisplayName();
   if (!user) return null;
 
   return (
@@ -72,7 +73,7 @@ export function FeatureSidebar({
       >
         <UserAvatar user={user} size={34} />
         <div className="min-w-0 flex-1 text-left">
-          <p className="text-sm font-bold truncate" style={{ color: "#3B1355" }}>{getDisplayName(user)}</p>
+          <p className="text-sm font-bold truncate" style={{ color: "#3B1355" }}>{displayName}</p>
           <p className="text-xs truncate" style={{ color: "#A06080" }}>마이페이지</p>
         </div>
         <Settings className="w-4 h-4 shrink-0" style={{ color: "#A06080" }} />

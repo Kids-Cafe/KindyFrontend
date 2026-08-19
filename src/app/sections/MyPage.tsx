@@ -13,7 +13,7 @@ import type { KindergartenInfo } from "@/app/auth/types";
 import { PROVIDERS, PROVIDER_ORDER } from "@/app/auth/providers";
 import { ProviderIcon } from "@/app/auth/ProviderIcon";
 import { UserAvatar } from "@/app/auth/UserAvatar";
-import { getDisplayName } from "@/app/auth/getDisplayName";
+import { useDisplayName } from "@/app/auth/useDisplayName";
 import { openAddressSearch } from "@/app/auth/addressSearch";
 import { useDashboardStoreOptional } from "@/app/dashboard/DashboardStoreContext";
 import { useChildVoiceSettings } from "@/app/dashboard/childVoiceSettings";
@@ -23,7 +23,7 @@ type MenuKey =
   | "childInfo" | "linkedAccounts" | "phone" | "personalInfo" | "withdraw";
 
 const MENU_ITEMS: { key: MenuKey; icon: typeof Baby; label: string; hint: string }[] = [
-  { key: "nickname", icon: UserCircle, label: "별칭 변경", hint: "다른 사람에게 보여질 이름" },
+  { key: "nickname", icon: UserCircle, label: "별칭 변경", hint: "유치원에서 보여질 이름" },
   { key: "password", icon: KeyRound, label: "비밀번호 재설정", hint: "계정 보안 설정" },
   { key: "address", icon: MapPin, label: "주소 변경", hint: "우편번호 · 상세주소" },
   { key: "kindergartenClass", icon: School, label: "유치원 및 소속반 변경", hint: "소속 기관/반 정보" },
@@ -31,7 +31,7 @@ const MENU_ITEMS: { key: MenuKey; icon: typeof Baby; label: string; hint: string
   { key: "notifications", icon: Bell, label: "알림 설정", hint: "공지 · 일정 · 채팅 알림" },
   { key: "linkedAccounts", icon: Link2, label: "연동된 계정 보기", hint: "소셜 로그인 연동 현황" },
   { key: "phone", icon: Phone, label: "전화번호 변경", hint: "연락처 정보" },
-  { key: "personalInfo", icon: Shield, label: "개인정보 변경", hint: "이름 · 이메일 확인" },
+  { key: "personalInfo", icon: Shield, label: "개인정보 확인", hint: "이름 · 이메일" },
   { key: "withdraw", icon: UserX, label: "회원 탈퇴", hint: "계정 삭제 및 로그아웃" },
 ];
 
@@ -125,7 +125,8 @@ function MyPagePanel({ panel, onDone }: { panel: MenuKey; onDone: (message?: str
   const store = useDashboardStoreOptional();
   const voice = useChildVoiceSettings(user?.id ?? "unknown");
 
-  const [nickname, setNickname] = useState(user?.nickname ?? user?.name ?? "");
+  // 별칭은 계정이 아니라 유치원마다 붙습니다. 지금 보고 있는 유치원의 값을 고칩니다.
+  const [nickname, setNickname] = useState(store?.data.myNickname ?? "");
   const [currentPw, setCurrentPw] = useState("");
   const [newPw, setNewPw] = useState("");
   const [pwConfirm, setPwConfirm] = useState("");
@@ -136,7 +137,6 @@ function MyPagePanel({ panel, onDone }: { panel: MenuKey; onDone: (message?: str
   const [address, setAddress] = useState(user?.address ?? "");
   const [addressDetail, setAddressDetail] = useState(user?.addressDetail ?? "");
   const [phone, setPhone] = useState(user?.phone ?? "");
-  const [name, setName] = useState(user?.name ?? "");
   const [childNickname, setChildNickname] = useState(store?.data.myChild?.nickname ?? "");
   const [kinderQuery, setKinderQuery] = useState("");
   const [kinderResults, setKinderResults] = useState<KindergartenInfo[]>([]);
@@ -147,26 +147,27 @@ function MyPagePanel({ panel, onDone }: { panel: MenuKey; onDone: (message?: str
 
   if (!user) return null;
 
-  /** 이메일 계정은 저장 전에 현재 비밀번호를 확인합니다. 소셜 계정은 비밀번호가 없어 바로 저장합니다. */
-  async function requirePassword(action: () => void) {
-    if (user!.provider !== "email") {
-      action();
-      return;
-    }
+  /**
+   * 이메일 계정은 저장 전에 현재 비밀번호를 확인합니다. 소셜 계정은 비밀번호가 없어 바로 저장합니다.
+   * 저장 자체가 서버 요청이므로 실패하면 안내만 남기고 화면은 바꾸지 않습니다.
+   */
+  async function requirePassword(action: () => Promise<void> | void) {
     if (isVerifying) return;
 
     setIsVerifying(true);
     try {
-      if (!(await verifyCurrentPassword(user!.loginId ?? user!.id, pwConfirm))) {
-        setPwError("비밀번호가 올바르지 않아요");
-        return;
+      if (user!.provider === "email") {
+        if (!(await verifyCurrentPassword(user!.loginId ?? user!.id, pwConfirm))) {
+          setPwError("비밀번호가 올바르지 않아요");
+          return;
+        }
+        setPwError(null);
+        setPwConfirm("");
       }
-      setPwError(null);
-      setPwConfirm("");
-      action();
+      await action();
     } catch (cause) {
-      console.error("[Kindy] 비밀번호 확인 실패", cause);
-      setPwError("확인 중 문제가 생겼어요. 잠시 후 다시 시도해주세요");
+      console.error("[Kindy] 저장 실패", cause);
+      setPwError("저장하지 못했어요. 잠시 후 다시 시도해주세요");
     } finally {
       setIsVerifying(false);
     }
@@ -229,12 +230,29 @@ function MyPagePanel({ panel, onDone }: { panel: MenuKey; onDone: (message?: str
 
   switch (panel) {
     case "nickname":
+      // 별칭은 유치원마다 따로 저장됩니다(T_RELATIONSHIP.NICKNAME). 소속이 없으면 저장할 곳도 없습니다.
+      if (!store) {
+        return (
+          <p className="text-sm leading-relaxed" style={{ color: "#6B7280" }}>
+            별칭은 유치원마다 따로 정해요. 유치원에 소속된 뒤에 정할 수 있어요.
+          </p>
+        );
+      }
       return (
         <div className="space-y-4">
-          <FieldLabel>별칭</FieldLabel>
-          <TextField value={nickname} onChange={setNickname} placeholder="별칭을 입력하세요" />
+          <FieldLabel>{store.data.kindergarten.name}에서 쓸 별칭</FieldLabel>
+          <TextField value={nickname} onChange={setNickname} placeholder={user.name} />
+          <p className="text-xs" style={{ color: "#9CA3AF" }}>
+            이 유치원에서만 쓰는 이름이에요. 비워 두면 실명({user.name})으로 보여요.
+          </p>
           <PasswordConfirmField show={user.provider === "email"} value={pwConfirm} onChange={(v) => { setPwConfirm(v); setPwError(null); }} error={pwError} />
-          <SaveButton disabled={isVerifying} onClick={() => void requirePassword(() => { updateProfile({ nickname }); onDone("별칭이 변경되었어요"); })} />
+          <SaveButton
+            disabled={isVerifying}
+            onClick={() => void requirePassword(async () => {
+              await store.setMyNickname(nickname);
+              onDone("별칭이 변경되었어요");
+            })}
+          />
         </div>
       );
 
@@ -278,7 +296,13 @@ function MyPagePanel({ panel, onDone }: { panel: MenuKey; onDone: (message?: str
           <FieldLabel>상세주소</FieldLabel>
           <TextField value={addressDetail} onChange={setAddressDetail} placeholder="동/호수 등" />
           <PasswordConfirmField show={user.provider === "email"} value={pwConfirm} onChange={(v) => { setPwConfirm(v); setPwError(null); }} error={pwError} />
-          <SaveButton disabled={isVerifying} onClick={() => void requirePassword(() => { updateProfile({ zonecode, address, addressDetail }); onDone("주소가 변경되었어요"); })} />
+          <SaveButton
+            disabled={isVerifying}
+            onClick={() => void requirePassword(async () => {
+              await updateProfile({ zonecode, address, addressDetail });
+              onDone("주소가 변경되었어요");
+            })}
+          />
         </div>
       );
 
@@ -381,7 +405,13 @@ function MyPagePanel({ panel, onDone }: { panel: MenuKey; onDone: (message?: str
           <FieldLabel>소속 반</FieldLabel>
           <TextField value={store.data.myChild.className} readOnly />
           <PasswordConfirmField show={user.provider === "email"} value={pwConfirm} onChange={(v) => { setPwConfirm(v); setPwError(null); }} error={pwError} />
-          <SaveButton disabled={isVerifying} onClick={() => void requirePassword(() => { store.updateChildNickname(store.data.myChild!.id, childNickname); onDone("아이 정보가 변경되었어요"); })} />
+          <SaveButton
+            disabled={isVerifying}
+            onClick={() => void requirePassword(async () => {
+              await store.updateChildNickname(store.data.myChild!.id, childNickname);
+              onDone("아이 정보가 변경되었어요");
+            })}
+          />
         </div>
       );
 
@@ -412,19 +442,28 @@ function MyPagePanel({ panel, onDone }: { panel: MenuKey; onDone: (message?: str
           <FieldLabel>전화번호</FieldLabel>
           <TextField value={phone} onChange={setPhone} placeholder="010-0000-0000" />
           <PasswordConfirmField show={user.provider === "email"} value={pwConfirm} onChange={(v) => { setPwConfirm(v); setPwError(null); }} error={pwError} />
-          <SaveButton disabled={isVerifying} onClick={() => void requirePassword(() => { updateProfile({ phone }); onDone("전화번호가 변경되었어요"); })} />
+          <SaveButton
+            disabled={isVerifying}
+            onClick={() => void requirePassword(async () => {
+              await updateProfile({ phone });
+              onDone("전화번호가 변경되었어요");
+            })}
+          />
         </div>
       );
 
     case "personalInfo":
+      // 실명과 이메일은 가입할 때 확정됩니다. 유치원에서 불리는 이름을 바꾸려면 "별칭 변경"으로 갑니다.
       return (
         <div className="space-y-4">
           <FieldLabel>이름</FieldLabel>
-          <TextField value={name} onChange={setName} />
+          <TextField value={user.name} readOnly />
           <FieldLabel>이메일</FieldLabel>
           <TextField value={user.email} readOnly />
-          <PasswordConfirmField show={user.provider === "email"} value={pwConfirm} onChange={(v) => { setPwConfirm(v); setPwError(null); }} error={pwError} />
-          <SaveButton disabled={isVerifying} onClick={() => void requirePassword(() => { updateProfile({ name }); onDone("개인정보가 변경되었어요"); })} />
+          <p className="text-xs leading-relaxed" style={{ color: "#9CA3AF" }}>
+            이름과 이메일은 가입할 때 확인한 정보라 바꿀 수 없어요.
+            다른 사람에게 보여질 이름은 "별칭 변경"에서 유치원마다 따로 정할 수 있어요.
+          </p>
         </div>
       );
 
@@ -457,6 +496,7 @@ function MyPagePanel({ panel, onDone }: { panel: MenuKey; onDone: (message?: str
  */
 export function MyPage({ onClose }: { onClose: () => void }) {
   const { user, logout } = useAuth();
+  const displayName = useDisplayName();
   const [activePanel, setActivePanel] = useState<MenuKey | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -504,7 +544,7 @@ export function MyPage({ onClose }: { onClose: () => void }) {
               <div className="flex items-center gap-4">
                 <UserAvatar user={user} size={64} />
                 <div className="min-w-0">
-                  <p className="text-xl font-bold text-white truncate" style={{ fontFamily: "'Fredoka',sans-serif" }}>{getDisplayName(user)}</p>
+                  <p className="text-xl font-bold text-white truncate" style={{ fontFamily: "'Fredoka',sans-serif" }}>{displayName}</p>
                   <p className="text-sm truncate" style={{ color: "rgba(255,255,255,0.8)" }}>{user.email}</p>
                   <p className="text-xs mt-1" style={{ color: "rgba(255,255,255,0.65)" }}>{formatJoinedAt(user.joinedAt)}부터 함께하는 중</p>
                 </div>

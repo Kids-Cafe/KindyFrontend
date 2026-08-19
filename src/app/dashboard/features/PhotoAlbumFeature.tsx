@@ -6,7 +6,7 @@ import { useConfirm } from "@/app/components/ConfirmDialog";
 import { canBrowseAllClasses, canManageClass, getLockedClassId, teacherHasPermission } from "@/app/dashboard/classAccess";
 import { useDashboardStore } from "@/app/dashboard/DashboardStoreContext";
 import { useAuth } from "@/app/auth/AuthContext";
-import { getDisplayName } from "@/app/auth/getDisplayName";
+import { useDisplayName } from "@/app/auth/useDisplayName";
 import type { PhotoRecord, PhotoThemeId } from "@/app/dashboard/types";
 
 /** 사진 한 장의 최대 용량입니다. 원본 그대로 메모리에 들고 있어 너무 큰 파일은 막습니다. */
@@ -170,6 +170,7 @@ function PhotoCard({
  */
 export function PhotoAlbumFeature() {
   const { user } = useAuth();
+  const displayName = useDisplayName();
   const { data, addPhoto, updatePhotoTheme, deletePhoto } = useDashboardStore();
   const { ask, dialog } = useConfirm();
   const [openIndex, setOpenIndex] = useState<number | null>(null);
@@ -213,7 +214,7 @@ export function PhotoAlbumFeature() {
       return;
     }
 
-    addPhoto(file, getDisplayName(user), activeClassId, uploadTheme);
+    addPhoto(file, displayName, activeClassId, uploadTheme);
   }
 
   return (

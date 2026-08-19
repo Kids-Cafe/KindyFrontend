@@ -1,5 +1,4 @@
 import type { AuthUser } from "@/app/auth/types";
-import { getDisplayName } from "@/app/auth/getDisplayName";
 import type { FamilyDTO, RelationshipDTO } from "@/app/lib/dto";
 import type {
   ChildRecord,
@@ -73,12 +72,12 @@ export function emptyDashboardData(
   user: AuthUser,
   kindergarten: KindergartenRecord,
   role: DashboardData["role"],
+  /** 이 유치원에서의 별칭입니다. 멤버 목록이 오기 전에도 제 이름으로 불리게 합니다. */
+  myNickname?: string,
 ): DashboardData {
-  const displayName = getDisplayName(user);
-
   const teacher: TeacherRecord = {
     id: user.id,
-    name: displayName,
+    name: myNickname?.trim() || user.name,
     className: "유치원 소속",
     kindergartenId: kindergarten.id,
     kindergartenName: kindergarten.name,
@@ -88,6 +87,7 @@ export function emptyDashboardData(
   return {
     role,
     kindergarten,
+    myNickname: myNickname?.trim() || undefined,
     teacher,
     classChildren: [],
     diaryByChild: {},
@@ -156,6 +156,8 @@ export interface MemberSnapshot {
   me?: ChildRecord;
   myChild?: ChildRecord;
   myClassChildren?: ChildRecord[];
+  /** 이 유치원에서 로그인한 사람이 쓰는 별칭입니다. 정하지 않았으면 undefined입니다. */
+  myNickname?: string;
 }
 
 /**
@@ -172,6 +174,10 @@ export function buildMemberSnapshot(
 ): MemberSnapshot {
   const teachers = toTeacherRecords(relationships, classes, kindergarten);
 
+  // 별칭은 유치원마다 다릅니다. 이 유치원에서 내가 어떻게 불리는지는 내 관계 행에만 있습니다.
+  const myNickname = relationships.find((r) => r.userId === user.id)?.nickname?.trim() || undefined;
+  const myDisplayName = myNickname ?? user.name;
+
   const parentByChildId = new Map(families.map((f) => [f.child, f.parent]));
   const childIdsOfUser = new Set(families.filter((f) => f.parent === user.id).map((f) => f.child));
 
@@ -183,7 +189,7 @@ export function buildMemberSnapshot(
   const nameByUserId = new Map(relationships.map((r) => [r.userId, r.userName ?? r.userId]));
   for (const child of classChildren) {
     if (child.parentId) child.parentName = nameByUserId.get(child.parentId) ?? undefined;
-    if (child.parentId === user.id) child.parentName = getDisplayName(user);
+    if (child.parentId === user.id) child.parentName = myDisplayName;
   }
 
   const me = role === "child" ? classChildren.find((c) => c.id === user.id) : undefined;
@@ -199,7 +205,7 @@ export function buildMemberSnapshot(
     ownMembership ??
     classTeacher ?? {
       id: user.id,
-      name: getDisplayName(user),
+      name: myDisplayName,
       className: "유치원 소속",
       kindergartenId: kindergarten.id,
       kindergartenName: kindergarten.name,
@@ -211,6 +217,7 @@ export function buildMemberSnapshot(
     teachers,
     classChildren,
     teacher,
+    myNickname,
     me,
     myChild,
     myClassChildren:

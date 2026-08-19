@@ -319,6 +319,11 @@ export interface FeatureDef {
 export interface DashboardData {
   role: DashboardRole;
   kindergarten: KindergartenRecord;
+  /**
+   * 이 유치원에서 로그인한 사람이 쓰는 별칭입니다(T_RELATIONSHIP.NICKNAME).
+   * 정하지 않았으면 비어 있고, 그때는 실명으로 불립니다.
+   */
+  myNickname?: string;
   /** 로그인한 사람 본인이 "아이"일 때만 채워집니다. */
   me?: ChildRecord;
   /** 로그인한 사람이 "부모"일 때 본인 아이입니다. */

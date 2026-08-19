@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { CalendarDays, LayoutList, Plus, Bell, X, Pencil, Trash2 } from "lucide-react";
 import { useDashboardStore } from "@/app/dashboard/DashboardStoreContext";
 import { useAuth } from "@/app/auth/AuthContext";
-import { getDisplayName } from "@/app/auth/getDisplayName";
+import { useDisplayName } from "@/app/auth/useDisplayName";
 import type { ScheduleEvent } from "@/app/dashboard/types";
 import { CalendarMonthView } from "@/app/dashboard/features/CalendarMonthView";
 import { DayEventDialog } from "@/app/dashboard/features/DayEventDialog";
@@ -187,6 +187,7 @@ type ScheduleTab = "all" | typeof WHOLE_KINDERGARTEN | number;
 
 export function ScheduleFeature() {
   const { user } = useAuth();
+  const displayName = useDisplayName();
   const { data, addScheduleEvent } = useDashboardStore();
   const [view, setView] = useState<"list" | "calendar">("list");
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -244,7 +245,7 @@ export function ScheduleFeature() {
 
   function handleSubmit() {
     if (!title.trim() || !date || !user) return;
-    addScheduleEvent(title.trim(), date, time || undefined, getDisplayName(user), composeClassId);
+    addScheduleEvent(title.trim(), date, time || undefined, displayName, composeClassId);
     setTitle("");
     setDate("");
     setTime("");

@@ -1,6 +1,7 @@
+import { useAuth } from "@/app/auth/AuthContext";
 import { PROVIDERS } from "@/app/auth/providers";
 import { ProviderIcon } from "@/app/auth/ProviderIcon";
-import { getDisplayName } from "@/app/auth/getDisplayName";
+import { useDisplayName } from "@/app/auth/useDisplayName";
 import type { AuthUser } from "@/app/auth/types";
 
 /**
@@ -16,6 +17,11 @@ export function UserAvatar({
   size?: number;
   showBadge?: boolean;
 }) {
+  const { user: signedInUser } = useAuth();
+  // 별칭은 유치원마다 다르므로 로그인한 본인일 때만 지금 유치원의 별칭 첫 글자를 씁니다.
+  const myDisplayName = useDisplayName();
+  const displayName = signedInUser?.id === user.id ? myDisplayName : user.name;
+
   const provider = user.provider === "email" ? null : PROVIDERS[user.provider];
   const badgeSize = Math.max(16, Math.round(size * 0.42));
 
@@ -38,7 +44,7 @@ export function UserAvatar({
             border: "2px solid rgba(255,255,255,0.9)",
           }}
         >
-          {getDisplayName(user).trim().charAt(0) || "K"}
+          {displayName.trim().charAt(0) || "K"}
         </span>
       )}
 

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Send, Pencil, Check } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/app/components/ui/sheet";
 import { useAuth } from "@/app/auth/AuthContext";
-import { getDisplayName } from "@/app/auth/getDisplayName";
+import { useDisplayName } from "@/app/auth/useDisplayName";
 import { useDashboardStore } from "@/app/dashboard/DashboardStoreContext";
 import { ClassAssignSelect } from "@/app/dashboard/ClassAssignSelect";
 
@@ -18,6 +18,7 @@ function formatTime(ms: number): string {
  */
 export function MemberProfilePanel({ teacherId, onClose }: { teacherId: string | null; onClose: () => void }) {
   const { user } = useAuth();
+  const displayName = useDisplayName();
   const { data, updateTeacherNickname, assignTeacherRole, sendMemberMessage } = useDashboardStore();
   const teacher = data.teachers.find((t) => t.id === teacherId);
   const canEdit = data.role === "director";
@@ -47,7 +48,7 @@ export function MemberProfilePanel({ teacherId, onClose }: { teacherId: string |
 
   function handleSend() {
     if (!teacher || !user || !input.trim()) return;
-    sendMemberMessage(teacher.id, canEdit ? "director" : "teacher", getDisplayName(user), input);
+    sendMemberMessage(teacher.id, canEdit ? "director" : "teacher", displayName, input);
     setInput("");
   }
 

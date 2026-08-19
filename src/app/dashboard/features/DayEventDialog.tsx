@@ -3,7 +3,7 @@ import { Plus, Pencil, Trash2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/app/components/ui/dialog";
 import { useDashboardStore } from "@/app/dashboard/DashboardStoreContext";
 import { useAuth } from "@/app/auth/AuthContext";
-import { getDisplayName } from "@/app/auth/getDisplayName";
+import { useDisplayName } from "@/app/auth/useDisplayName";
 import { TimePickerButton } from "@/app/dashboard/features/TimePickerButton";
 import type { ScheduleEvent } from "@/app/dashboard/types";
 import { useConfirm } from "@/app/components/ConfirmDialog";
@@ -29,6 +29,7 @@ const EMPTY_FORM = { title: "", time: "", classId: undefined as number | undefin
  */
 export function DayEventDialog({ dateStr, onClose }: { dateStr: string | null; onClose: () => void }) {
   const { user } = useAuth();
+  const displayName = useDisplayName();
   const { data, addScheduleEvent, updateScheduleEvent, deleteScheduleEvent } = useDashboardStore();
   const { ask, dialog } = useConfirm();
   // "list"/"new" are the two form states; any other value is the id of the event being edited.
@@ -83,7 +84,7 @@ export function DayEventDialog({ dateStr, onClose }: { dateStr: string | null; o
     // 일반 선생님은 폼에서 대상을 바꿀 수 없으므로 항상 자기 반으로 고정됩니다.
     const classId = isTeacher && !hasElevatedPermission ? composeClassId : form.classId;
     if (mode === "new") {
-      addScheduleEvent(form.title.trim(), dateStr, form.time || undefined, getDisplayName(user), classId);
+      addScheduleEvent(form.title.trim(), dateStr, form.time || undefined, displayName, classId);
     } else if (typeof mode === "number") {
       updateScheduleEvent(mode, form.title.trim(), dateStr, form.time || undefined, classId);
     }

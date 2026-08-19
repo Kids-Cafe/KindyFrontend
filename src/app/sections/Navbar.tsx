@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Menu, X, Sparkles, User, LayoutDashboard, LogOut } from "lucide-react";
 import { useAuth } from "@/app/auth/AuthContext";
 import { UserAvatar } from "@/app/auth/UserAvatar";
-import { getDisplayName } from "@/app/auth/getDisplayName";
+import { useDisplayName } from "@/app/auth/useDisplayName";
 
 const NAV_LINKS = [
   ["#features", "서비스 소개"],
@@ -122,6 +122,7 @@ export function Navbar({
   const busy = useRef(false);
 
   const { user, isAuthenticated, logout } = useAuth();
+  const displayName = useDisplayName();
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 30);
@@ -249,7 +250,7 @@ export function Navbar({
                 >
                   <UserAvatar user={user} size={30} />
                   <span className={`text-sm font-bold max-w-[7rem] truncate ${scrolled ? "text-foreground" : "text-white"}`}>
-                    {getDisplayName(user)}
+                    {displayName}
                   </span>
                 </button>
 
@@ -263,7 +264,7 @@ export function Navbar({
                     <div className="flex items-center gap-3 px-4 py-3.5" style={{ borderBottom: "1px solid #F3F4F6" }}>
                       <UserAvatar user={user} size={38} />
                       <div className="min-w-0">
-                        <p className="text-sm font-bold truncate" style={{ color: "#1F0A3C" }}>{getDisplayName(user)}</p>
+                        <p className="text-sm font-bold truncate" style={{ color: "#1F0A3C" }}>{displayName}</p>
                         <p className="text-xs truncate" style={{ color: "#9CA3AF" }}>{user.email}</p>
                       </div>
                     </div>
@@ -334,7 +335,7 @@ export function Navbar({
               <div className="flex items-center gap-3 py-4" style={{ borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
                 <UserAvatar user={user} size={40} />
                 <div className="min-w-0">
-                  <p className="text-sm font-bold truncate" style={{ color: "#1F0A3C" }}>{getDisplayName(user)}</p>
+                  <p className="text-sm font-bold truncate" style={{ color: "#1F0A3C" }}>{displayName}</p>
                   <p className="text-xs truncate" style={{ color: "#9CA3AF" }}>{user.email}</p>
                 </div>
               </div>

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Backpack, Plus, MessageCircle } from "lucide-react";
 import { useDashboardStore } from "@/app/dashboard/DashboardStoreContext";
 import { useAuth } from "@/app/auth/AuthContext";
-import { getDisplayName } from "@/app/auth/getDisplayName";
+import { useDisplayName } from "@/app/auth/useDisplayName";
 import { DatePickerButton } from "@/app/dashboard/features/DatePickerButton";
 
 function formatDate(ms: number): string {
@@ -12,12 +12,13 @@ function formatDate(ms: number): string {
 
 function CommentBox({ classId, supplyId }: { classId: number; supplyId: number }) {
   const { user } = useAuth();
+  const displayName = useDisplayName();
   const { data, addSupplyComment } = useDashboardStore();
   const [text, setText] = useState("");
 
   function submit() {
     if (!text.trim() || !user) return;
-    addSupplyComment(classId, supplyId, getDisplayName(user), data.role, text);
+    addSupplyComment(classId, supplyId, displayName, data.role, text);
     setText("");
   }
 
@@ -48,6 +49,7 @@ function CommentBox({ classId, supplyId }: { classId: number; supplyId: number }
  */
 export function SuppliesFeature() {
   const { user } = useAuth();
+  const displayName = useDisplayName();
   const { data, addSupplyItem } = useDashboardStore();
   const [classId, setClassId] = useState(() => data.teacher.classId);
   const [composing, setComposing] = useState(false);
@@ -68,7 +70,7 @@ export function SuppliesFeature() {
 
   function handleSubmit() {
     if (!title.trim() || !body.trim() || !user || activeClassId === undefined) return;
-    addSupplyItem(activeClassId, title.trim(), body.trim(), getDisplayName(user), dueDate || undefined);
+    addSupplyItem(activeClassId, title.trim(), body.trim(), displayName, dueDate || undefined);
     setTitle("");
     setBody("");
     setDueDate("");

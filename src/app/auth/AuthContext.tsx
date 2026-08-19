@@ -63,8 +63,12 @@ interface AuthContextValue {
   isSubmittingPassword: boolean;
   /** 콜백 처리 결과로 받은 세션을 확정합니다. */
   setSession: (session: AuthSession) => void;
-  /** 로그인된 사용자 정보 일부를 병합해 저장합니다. 온보딩 단계에서 씁니다. */
-  updateProfile: (partial: Partial<AuthUser>) => void;
+  /**
+   * 로그인된 사용자 정보 일부를 병합해 저장합니다.
+   * 서버에 자리가 있는 값(전화번호·주소)은 저장이 끝난 뒤에야 세션에 반영되고,
+   * 실패하면 `ApiError`를 던집니다 — 화면에 "저장됐어요"만 뜨고 서버에는 남지 않는 일이 없도록.
+   */
+  updateProfile: (partial: Partial<AuthUser>) => Promise<void>;
   setError: (message: string | null) => void;
   logout: () => void;
   /** 서버 세션이 끊겨서 자동으로 로그아웃된 직후인지. 안내 모달을 띄우는 데 씁니다. */
@@ -173,25 +177,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   /**
    * 사용자 정보 일부를 세션에 병합합니다.
    *
-   * 주소는 서버에도 저장되지만(`user/update`), 역할·별칭·소속 유치원은 백엔드에서
-   * 사용자가 아니라 유치원과의 관계에 붙어 있어 여기서 서버로 보낼 곳이 없습니다.
-   * 그 값들은 세션에만 남고, 실제 판정은 대시보드가 관계 정보로 다시 합니다.
+   * 전화번호·주소는 서버(`user/update`)에 저장한 다음 세션에 반영합니다. 저장이 실패하면
+   * 세션도 건드리지 않고 던지므로, 화면에는 바뀌었는데 서버에는 없는 상태가 남지 않습니다.
+   *
+   * 역할·소속 유치원은 백엔드에서 사용자가 아니라 유치원과의 관계에 붙어 있어 여기서 보낼
+   * 곳이 없습니다. 그 값들은 세션에만 남고, 실제 판정은 대시보드가 관계 정보로 다시 합니다.
+   * 별칭도 마찬가지로 유치원마다 다르므로 여기가 아니라 `setMyNickname`이 저장합니다.
    */
-  const updateProfile = useCallback((partial: Partial<AuthUser>) => {
+  const updateProfile = useCallback(async (partial: Partial<AuthUser>) => {
+    const body: Record<string, string> = {};
+    if (partial.phone !== undefined) body.phone = partial.phone;
+    if (partial.address !== undefined || partial.zonecode !== undefined) {
+      body.address = partial.address ?? "";
+      body.postcode = partial.zonecode ?? "";
+      body.addressDetail = partial.addressDetail ?? "";
+    }
+    if (Object.keys(body).length > 0) await apiPost("/api/user/update", body);
+
     setSessionState((prev) => {
       if (!prev) return prev;
       const next: AuthSession = { ...prev, user: { ...prev.user, ...partial } };
       saveSession(next);
       return next;
     });
-
-    if (partial.address !== undefined || partial.zonecode !== undefined) {
-      apiPost("/api/user/update", {
-        address: partial.address,
-        addressDetail: partial.addressDetail,
-        postcode: partial.zonecode,
-      }).catch((cause) => console.warn("[Kindy] 주소를 저장하지 못했어요.", cause));
-    }
   }, []);
 
   const logout = useCallback(() => {

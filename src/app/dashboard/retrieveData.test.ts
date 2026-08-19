@@ -25,7 +25,6 @@ function makeUser(partial: Partial<AuthUser> = {}): AuthUser {
     loginId: "demo",
     provider: "email",
     joinedAt: "2026-01-01T00:00:00.000Z",
-    nickname: "데모",
     accountType: "adult",
     role: "teacher",
     teacherRole: "director",
@@ -166,7 +165,19 @@ describe("buildMemberSnapshot", () => {
     const snap = buildMemberSnapshot(makeUser(), "director", KINDERGARTEN, CLASSES, [], []);
 
     expect(snap.teacher.id).toBe("user-1");
+    expect(snap.teacher.name).toBe("김데모"); // 별칭이 없으면 실명입니다.
     expect(snap.teacher.className).toBe("유치원 소속");
     expect(snap.classChildren).toEqual([]);
+  });
+
+  it("이 유치원에서 내가 쓰는 별칭을 내 관계에서 찾아 낸다", () => {
+    const user = makeUser({ id: "teacher-1", teacherRole: "teacher" });
+    const withNickname = [
+      relationship({ userId: "teacher-1", userName: "박선생", nickname: "해바라기쌤", type: "TEACHER", classId: 1 }),
+    ];
+
+    expect(buildMemberSnapshot(user, "teacher", KINDERGARTEN, CLASSES, withNickname, []).myNickname).toBe("해바라기쌤");
+    // 별칭은 유치원마다 다릅니다. 이 유치원에서 정해 두지 않았으면 없는 것으로 봅니다.
+    expect(buildMemberSnapshot(user, "teacher", KINDERGARTEN, CLASSES, relationships, []).myNickname).toBeUndefined();
   });
 });

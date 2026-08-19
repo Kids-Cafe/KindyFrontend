@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Sparkles, MessagesSquare, Phone, Send } from "lucide-react";
 import { useDashboardStore } from "@/app/dashboard/DashboardStoreContext";
 import { useAuth } from "@/app/auth/AuthContext";
-import { getDisplayName } from "@/app/auth/getDisplayName";
+import { useDisplayName } from "@/app/auth/useDisplayName";
 import { REPORT_CATEGORY_ORDER, REPORT_META } from "@/app/dashboard/reportMeta";
 import { ReportByCategory } from "@/app/dashboard/reports";
 import type { ChildRecord } from "@/app/dashboard/types";
@@ -38,6 +38,7 @@ function SectionHeading({ icon: Icon, children }: { icon: typeof Sparkles; child
  */
 export function ChildFullReport({ child, viewerRole }: { child: ChildRecord; viewerRole: "teacher" | "parent" }) {
   const { user } = useAuth();
+  const displayName = useDisplayName();
   const { data, addParentNote, addParentNoteComment } = useDashboardStore();
   const [noteText, setNoteText] = useState("");
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
@@ -50,14 +51,14 @@ export function ChildFullReport({ child, viewerRole }: { child: ChildRecord; vie
 
   function submitNote() {
     if (!noteText.trim() || !user) return;
-    addParentNote(child.id, getDisplayName(user), noteText);
+    addParentNote(child.id, displayName, noteText);
     setNoteText("");
   }
 
   function submitComment(noteId: number) {
     const text = commentDrafts[noteId] ?? "";
     if (!text.trim() || !user) return;
-    addParentNoteComment(child.id, noteId, getDisplayName(user), data.role, text);
+    addParentNoteComment(child.id, noteId, displayName, data.role, text);
     setCommentDrafts((prev) => ({ ...prev, [noteId]: "" }));
   }
 
