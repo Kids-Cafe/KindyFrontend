@@ -142,6 +142,12 @@ interface DashboardStoreValue {
   /** 메인페이지(홈)에 기능 위젯을 추가/제거합니다. */
   addHomeWidget: (id: FeatureId) => void;
   removeHomeWidget: (id: FeatureId) => void;
+
+  /**
+   * 지금 보고 있는 유치원의 데이터를 서버에서 다시 받습니다.
+   * 이 스토어를 거치지 않는 변경(예: 가입 신청 수락으로 멤버가 늘어남) 뒤에 씁니다.
+   */
+  refreshWorkspace: () => void;
 }
 
 const DashboardStoreContext = createContext<DashboardStoreValue | null>(null);
@@ -794,6 +800,7 @@ export function DashboardStoreProvider({
       sendMemberMessage,
       addHomeWidget,
       removeHomeWidget,
+      refreshWorkspace: refresh,
     }),
     [
       data,
@@ -834,6 +841,7 @@ export function DashboardStoreProvider({
       sendMemberMessage,
       addHomeWidget,
       removeHomeWidget,
+      refresh,
     ],
   );
 

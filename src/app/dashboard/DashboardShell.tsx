@@ -3,7 +3,6 @@ import { ChevronRight, PanelRightClose, PanelRightOpen } from "lucide-react";
 import { useAuth } from "@/app/auth/AuthContext";
 import { MyPage } from "@/app/sections/MyPage";
 import { ReceivedInvites } from "@/app/auth/ReceivedInvites";
-import type { InviteTargetRole } from "@/app/auth/ReceivedInvites";
 import { MiniStar } from "@/app/components/decorative";
 import { DashboardStoreProvider, useDashboardStore } from "@/app/dashboard/DashboardStoreContext";
 import { ServerRail } from "@/app/dashboard/ServerRail";
@@ -149,6 +148,12 @@ function DashboardBody({ onMembershipsChanged }: { onMembershipsChanged: () => v
         </div>
 
         <div className="flex-1 min-h-0 overflow-y-auto p-6">
+          {/*
+            이미 어느 유치원에 소속돼 있어도 다른 유치원의 초대는 계속 올 수 있습니다.
+            초대가 대기 중일 때만 나타나며(없으면 아무것도 렌더하지 않습니다), 수락하면
+            워크스페이스 목록을 다시 받아 좌측 레일에 새 유치원이 생깁니다.
+          */}
+          <ReceivedInvites onAccepted={onMembershipsChanged} />
           <NoticeBanner />
           {data.role !== "child" && <UpcomingScheduleBanner />}
           {data.role === "child" && data.me && (
@@ -265,11 +270,8 @@ function BareScreen({ children }: { children: React.ReactNode }) {
  * 받은 초대는 이 자리에서 바로 수락할 수 있게 함께 보여줍니다.
  */
 function EmptyWorkspaceScreen({ onJoined }: { onJoined: () => void }) {
-  const { user, logout } = useAuth();
+  const { logout } = useAuth();
   const [showMyPage, setShowMyPage] = useState(false);
-
-  const inviteRole: InviteTargetRole =
-    user?.accountType === "child" ? "child" : user?.role === "teacher" ? "teacher" : "parent";
 
   return (
     <BareScreen>
@@ -279,7 +281,7 @@ function EmptyWorkspaceScreen({ onJoined }: { onJoined: () => void }) {
       </p>
 
       <div className="w-full max-w-sm">
-        <ReceivedInvites role={inviteRole} onAccepted={onJoined} />
+        <ReceivedInvites onAccepted={onJoined} />
       </div>
 
       <div className="flex items-center gap-2">

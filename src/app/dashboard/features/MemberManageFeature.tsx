@@ -1,8 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
-import { ShieldCheck, Plus, Trash2, Search, Mail, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ShieldCheck, Plus, Trash2, Search, Mail, X, Check, UserPlus } from "lucide-react";
 import { useDashboardStore } from "@/app/dashboard/DashboardStoreContext";
 import { useAuth } from "@/app/auth/AuthContext";
-import { cancelInviteOnServer, fetchSentInvites, sendInviteOnServer } from "@/app/dashboard/backendSync";
+import {
+  acceptInviteOnServer,
+  cancelInviteOnServer,
+  fetchSentInvites,
+  rejectInviteOnServer,
+  sendInviteOnServer,
+} from "@/app/dashboard/backendSync";
 import { searchUsers } from "@/app/dashboard/userSync";
 import type { InviteDTO, PlainUserDTO } from "@/app/lib/dto";
 import { PERMISSION_LABELS } from "@/app/dashboard/types";
@@ -27,6 +33,9 @@ const STATUS_COLOR: Record<InviteStatus, { bg: string; fg: string }> = {
   rejected: { bg: "rgba(248,113,113,0.15)", fg: "#DC2626" },
 };
 
+/** 초대장이 만들려는 관계입니다. 서버 타입은 CHILD/TEACHER 둘뿐입니다. */
+const TYPE_LABEL: Record<InviteDTO["type"], string> = { TEACHER: "선생님", CHILD: "아이 · 학부모" };
+
 function formatDate(ms: number): string {
   const d = new Date(ms);
   return `${d.getFullYear()}.${(d.getMonth() + 1).toString().padStart(2, "0")}.${d.getDate().toString().padStart(2, "0")}`;
@@ -37,10 +46,15 @@ function formatDate(ms: number): string {
  * 권한 묶음(역할)을 만들고, 유치원 소속 교사 계정에 배정합니다.
  * 교사 초대는 아이디로 검색해 실제로 가입된 계정을 특정한 뒤 초대 메시지를 보내는
  * 방식이며, 상대가 수락해야 비로소 정식 멤버(교사 계정 목록)에 합류합니다.
+ *
+ * 초대장(`kindergarten/invite/list`)에는 두 방향이 섞여 옵니다 — 우리가 보낸 초대(INVITE)와
+ * 누군가 우리 유치원에 넣은 가입 신청(JOIN)입니다. 이전에는 둘을 구분하지 않고 전부
+ * "보낸 초대"로 묶어 취소 버튼만 달아 둬서, **가입 신청을 수락할 방법이 아예 없었습니다.**
+ * 지금은 방향별로 나눠 신청에는 수락/거절을, 우리가 보낸 초대에는 취소를 붙입니다.
  */
 export function MemberManageFeature() {
   const { user } = useAuth();
-  const { data, createRole, updateRolePermissions, deleteRole, assignTeacherRole, removeTeacherMembership } = useDashboardStore();
+  const { data, createRole, updateRolePermissions, deleteRole, assignTeacherRole, removeTeacherMembership, refreshWorkspace } = useDashboardStore();
   const { ask, dialog } = useConfirm();
   const [newRoleName, setNewRoleName] = useState("");
 
@@ -52,22 +66,68 @@ export function MemberManageFeature() {
   // 초대에 붙일 역할입니다. 반 배정은 서버 초대에 담을 수 없어(RelationshipDTO.classId를
   // 세우는 엔드포인트가 없습니다) 수락 후 따로 지정해야 합니다.
   const [inviteRoleId, setInviteRoleId] = useState<number | "">("");
-  const [sentInvites, setSentInvites] = useState<InviteDTO[]>([]);
-  // 초대 대상의 이름은 이번 세션에서 검색해 알아낸 결과로 채웁니다(InviteDTO에는 userId만 있습니다).
+  // 유치원에 걸려 있는 대기 중인 초대장 전부입니다(우리가 보낸 것 + 받은 가입 신청).
+  const [invites, setInvites] = useState<InviteDTO[]>([]);
+  const [respondingId, setRespondingId] = useState<number | null>(null);
+  // 초대 대상의 이름입니다. `invite/list`는 아이디만 내려주므로 `user/search`로 채웁니다.
   const [nameById, setNameById] = useState<Record<string, { name: string; loginId: string }>>({});
+  // 한 번 찾아본 아이디는 (못 찾았더라도) 다시 조회하지 않습니다.
+  const nameLookupTried = useRef<Set<string>>(new Set());
 
   function refreshInvites() {
-    fetchSentInvites(data.kindergarten.id).then(setSentInvites).catch(() => {});
+    fetchSentInvites(data.kindergarten.id).then(setInvites).catch(() => {});
   }
 
   useEffect(() => {
     refreshInvites();
   }, [data.kindergarten.id]);
 
-  const pendingTargetIds = useMemo(
+  // 우리가 보낸 초대와 받은 가입 신청은 처리하는 방법이 다릅니다.
+  const sentInvites = useMemo(() => invites.filter((i) => i.direction === "INVITE"), [invites]);
+  const joinRequests = useMemo(
+    () => invites.filter((i) => i.direction === "JOIN" && STATUS_MAP[i.status] === "pending"),
+    [invites],
+  );
+
+  /**
+   * 초대장에 이름이 담기지 않아(아이디만 옵니다) 목록에 낯선 아이디가 그대로 보였습니다.
+   * 모르는 아이디만 골라 `user/search`로 한 번씩 찾아 이름을 채웁니다.
+   */
+  useEffect(() => {
+    const unknown = [
+      ...new Set(
+        invites
+          .map((i) => i.userId)
+          .filter((id) => id && id.trim().length >= 2 && !(id in nameById) && !nameLookupTried.current.has(id)),
+      ),
+    ];
+    if (unknown.length === 0) return;
+    unknown.forEach((id) => nameLookupTried.current.add(id));
+
+    let cancelled = false;
+    void Promise.all(
+      unknown.map(async (id) => {
+        // 부분 일치 검색이라 정확히 같은 아이디만 인정합니다.
+        const found = await searchUsers(id).catch(() => []);
+        const exact = found.find((u) => u.id === id);
+        return exact ? ([id, { name: exact.name, loginId: exact.id }] as const) : null;
+      }),
+    ).then((pairs) => {
+      const resolved = pairs.filter((p): p is [string, { name: string; loginId: string }] => p !== null);
+      if (cancelled || resolved.length === 0) return;
+      setNameById((prev) => ({ ...prev, ...Object.fromEntries(resolved) }));
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [invites, nameById]);
+
+  const pendingInviteIds = useMemo(
     () => new Set(sentInvites.filter((i) => STATUS_MAP[i.status] === "pending").map((i) => i.userId)),
     [sentInvites],
   );
+  const requestedIds = useMemo(() => new Set(joinRequests.map((i) => i.userId)), [joinRequests]);
   const memberIds = useMemo(() => new Set(data.teachers.map((t) => t.id)), [data.teachers]);
 
   function togglePermission(roleId: number, key: PermissionKey, current: PermissionKey[]) {
@@ -119,6 +179,23 @@ export function MemberManageFeature() {
     cancelInviteOnServer(inviteId)
       .catch(() => {})
       .finally(refreshInvites);
+  }
+
+  /**
+   * 가입 신청에 답합니다. 서버는 MANAGE_MEMBER 권한이 있는 사람의 응답만 받아들이고,
+   * 수락하면 그 자리에서 유치원 관계를 만듭니다 — 그래서 멤버 목록을 다시 받아야 합니다.
+   */
+  async function handleRespondJoin(inviteId: number, accept: boolean) {
+    setRespondingId(inviteId);
+    try {
+      await (accept ? acceptInviteOnServer(inviteId) : rejectInviteOnServer(inviteId));
+      if (accept) refreshWorkspace();
+    } catch (cause) {
+      console.warn("[Kindy] 가입 신청을 처리하지 못했어요.", cause);
+    } finally {
+      setRespondingId(null);
+      refreshInvites();
+    }
   }
 
   return (
@@ -217,7 +294,10 @@ export function MemberManageFeature() {
             )}
             {results.map((r) => {
               const isMember = memberIds.has(r.id);
-              const isPending = pendingTargetIds.has(r.id);
+              const isPending = pendingInviteIds.has(r.id);
+              // 이미 우리 유치원에 가입을 신청해 둔 사람이라면, 초대를 새로 보내는 대신
+              // 아래 "받은 가입 신청"에서 수락하면 됩니다.
+              const hasRequested = requestedIds.has(r.id);
               return (
                 <div key={r.id} className="rounded-xl px-3.5 py-3" style={{ background: "#FAFAFA", border: "1px solid #F3F4F6" }}>
                   <div className="flex items-center justify-between gap-2">
@@ -229,6 +309,10 @@ export function MemberManageFeature() {
                     {isMember ? (
                       <span className="text-[11px] font-bold px-2.5 py-1 rounded-full shrink-0" style={{ background: STATUS_COLOR.accepted.bg, color: STATUS_COLOR.accepted.fg }}>
                         이미 우리 교사
+                      </span>
+                    ) : hasRequested ? (
+                      <span className="text-[11px] font-bold px-2.5 py-1 rounded-full shrink-0" style={{ background: STATUS_COLOR.pending.bg, color: STATUS_COLOR.pending.fg }}>
+                        가입 신청 대기중
                       </span>
                     ) : isPending ? (
                       <span className="text-[11px] font-bold px-2.5 py-1 rounded-full shrink-0" style={{ background: STATUS_COLOR.pending.bg, color: STATUS_COLOR.pending.fg }}>
@@ -275,6 +359,54 @@ export function MemberManageFeature() {
           </div>
         </div>
 
+        {joinRequests.length > 0 && (
+          <div className="mb-4">
+            <p className="text-xs font-bold mb-2.5 flex items-center gap-1.5" style={{ color: "#E879A0" }}>
+              <UserPlus className="w-3.5 h-3.5" /> 받은 가입 신청 · {joinRequests.length}건
+            </p>
+            <div className="space-y-2">
+              {joinRequests.map((invite) => {
+                const known = nameById[invite.userId];
+                const busy = respondingId === invite.id;
+                return (
+                  <div
+                    key={invite.id}
+                    className="flex items-center justify-between gap-2 rounded-xl px-3.5 py-2.5"
+                    style={{ background: "#FDF2F8", border: "1px solid #FBCFE8" }}
+                  >
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold truncate" style={{ color: "#3B1355" }}>
+                        {known?.name ?? invite.userId} {known && <span className="font-normal" style={{ color: "#A06080" }}>· {known.loginId}</span>}
+                      </p>
+                      <p className="text-[11px]" style={{ color: "#A06080" }}>
+                        {TYPE_LABEL[invite.type]}(으)로 신청 · {formatDate(invite.createdAt)}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        onClick={() => handleRespondJoin(invite.id, false)}
+                        disabled={busy}
+                        className="text-[11px] font-bold px-2.5 py-1.5 rounded-full disabled:opacity-50"
+                        style={{ background: "#F3F4F6", color: "#A06080" }}
+                      >
+                        거절
+                      </button>
+                      <button
+                        onClick={() => handleRespondJoin(invite.id, true)}
+                        disabled={busy}
+                        className="flex items-center gap-1 text-[11px] font-bold px-2.5 py-1.5 rounded-full text-white disabled:opacity-50"
+                        style={{ background: "linear-gradient(135deg,#E879A0,#F472B6)" }}
+                      >
+                        <Check className="w-3 h-3" /> 수락
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {sentInvites.length > 0 && (
           <div className="mb-4">
             <p className="text-xs font-bold mb-2.5" style={{ color: "#6B3580" }}>보낸 초대 · {sentInvites.length}건</p>
@@ -288,7 +420,9 @@ export function MemberManageFeature() {
                       <p className="text-xs font-bold truncate" style={{ color: "#3B1355" }}>
                         {known?.name ?? invite.userId} {known && <span className="font-normal" style={{ color: "#A06080" }}>· {known.loginId}</span>}
                       </p>
-                      <p className="text-[11px]" style={{ color: "#A06080" }}>{formatDate(invite.createdAt)}</p>
+                      <p className="text-[11px]" style={{ color: "#A06080" }}>
+                        {TYPE_LABEL[invite.type]}(으)로 초대 · {formatDate(invite.createdAt)}
+                      </p>
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
                       <span className="text-[11px] font-bold px-2.5 py-1 rounded-full" style={{ background: STATUS_COLOR[status].bg, color: STATUS_COLOR[status].fg }}>

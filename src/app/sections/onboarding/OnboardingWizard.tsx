@@ -142,7 +142,7 @@ export function OnboardingWizard({ onComplete }: { onComplete: () => void }) {
 
         {step === "kinder" && teacherRole === "teacher" && (
           <>
-            <ReceivedInvites role="teacher" onAccepted={() => finish({})} />
+            <ReceivedInvites onAccepted={() => finish({})} />
             <KindergartenSearchStep
               onSelect={(kindergarten) => finish({ role: "teacher", teacherRole: "teacher", kindergarten }, { type: "TEACHER" })}
               onSkip={() => finish({ role: "teacher", teacherRole: "teacher" })}
@@ -152,7 +152,7 @@ export function OnboardingWizard({ onComplete }: { onComplete: () => void }) {
 
         {step === "kinderParent" && (
           <>
-            <ReceivedInvites role={isChildAccount ? "child" : "parent"} onAccepted={() => finish({})} />
+            <ReceivedInvites onAccepted={() => finish({})} />
             <KindergartenSearchStep
               onSelect={(kindergarten) => finish({ role: "parent", kindergarten }, { type: "CHILD" })}
               onSkip={() => finish({ role: "parent" })}

@@ -10,7 +10,6 @@ import { registerKindergarten } from "@/app/auth/signup";
 import { KindergartenRegisterForm } from "@/app/auth/KindergartenRegisterForm";
 import { isPasswordValid } from "@/app/auth/validation";
 import { ReceivedInvites } from "@/app/auth/ReceivedInvites";
-import type { InviteTargetRole } from "@/app/auth/ReceivedInvites";
 import type { KindergartenInfo } from "@/app/auth/types";
 import { PROVIDERS, PROVIDER_ORDER } from "@/app/auth/providers";
 import { ProviderIcon } from "@/app/auth/ProviderIcon";
@@ -320,12 +319,11 @@ function MyPagePanel({
       );
 
     case "kindergartenClass": {
-      const inviteRole: InviteTargetRole = user.accountType === "child" ? "child" : user.role === "teacher" ? "teacher" : "parent";
       // 유치원 등록은 사업자등록번호가 필요한 원장의 일이라 성인 계정에서만 열어 둡니다.
       const canRegisterKindergarten = user.accountType !== "child";
       return (
         <div className="space-y-4">
-          <ReceivedInvites role={inviteRole} onAccepted={() => onDone("유치원 초대를 수락했어요")} />
+          <ReceivedInvites onAccepted={() => onDone("유치원 초대를 수락했어요")} />
 
           {user.kindergarten ? (
             <>
@@ -359,8 +357,10 @@ function MyPagePanel({
                 <button
                   key={kg.id}
                   // 가입은 곧바로 확정되지 않고 원장의 수락을 기다리는 요청으로 남습니다.
+                  // 관계 타입은 온보딩과 같은 규칙입니다 — 선생님만 TEACHER이고, 학부모와
+                  // 아이는 CHILD입니다(학부모 계정이 TEACHER로 신청해 수락되면 교사가 됐습니다).
                   onClick={() =>
-                    void requestJoinKindergarten(kg.id, user.accountType === "child" ? "CHILD" : "TEACHER")
+                    void requestJoinKindergarten(kg.id, user.role === "teacher" ? "TEACHER" : "CHILD")
                       .then(() => onDone(`${kg.name}에 가입을 신청했어요. 원장님이 수락하면 소속돼요.`))
                       .catch(() => onDone("가입 신청에 실패했어요. 잠시 후 다시 시도해주세요."))
                   }
