@@ -436,13 +436,20 @@ function MyPagePanel({
 
           {user.accountType === "child" && (
             <div className="pt-4 border-t" style={{ borderColor: "#F3F4F6" }}>
+              {/* 일정 안내와 채팅 답장을 따로 끕니다. 하나로 묶으면 알림만 조용히 하려던
+                  선택이 파트너의 목소리까지 함께 빼앗습니다. */}
               <label className="flex items-center justify-between mb-3">
                 <span className="text-sm font-bold" style={{ color: "#1F0A3C" }}>캐릭터 음성 알림</span>
                 <input type="checkbox" checked={voice.settings.enabled} onChange={(e) => voice.update({ enabled: e.target.checked })} className="w-5 h-5" />
               </label>
+              <label className="flex items-center justify-between mb-3">
+                <span className="text-sm font-bold" style={{ color: "#1F0A3C" }}>AI 파트너가 답장 읽어주기</span>
+                <input type="checkbox" checked={voice.settings.readReplies} onChange={(e) => voice.update({ readReplies: e.target.checked })} className="w-5 h-5" />
+              </label>
               <FieldLabel>음성 볼륨</FieldLabel>
               <input type="range" min={0} max={1} step={0.05} value={voice.settings.volume}
-                onChange={(e) => voice.update({ volume: Number(e.target.value) })} className="w-full" disabled={!voice.settings.enabled} />
+                onChange={(e) => voice.update({ volume: Number(e.target.value) })} className="w-full"
+                disabled={!voice.settings.enabled && !voice.settings.readReplies} />
             </div>
           )}
           <SaveButton onClick={() => onDone("알림 설정이 저장되었어요")} />

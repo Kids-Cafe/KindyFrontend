@@ -110,11 +110,24 @@ function toSearchParams(params?: Params): URLSearchParams {
 }
 
 async function unwrap<T>(res: Response): Promise<T> {
-  const body = (await res.json()) as ResultEnvelope<T>;
   lastActivityAt = Date.now();
+
+  // 서버가 처리하지 못한 예외는 `ResultDTO`가 아니라 **HTML 오류 페이지**로 옵니다.
+  // 그대로 `res.json()`을 하면 `ApiError`가 아니라 `SyntaxError`가 나가고, 호출부의
+  // `catch (e) { if (e instanceof ApiError) ... }`가 통째로 빗나갑니다.
+  let body: ResultEnvelope<T>;
+  try {
+    body = (await res.json()) as ResultEnvelope<T>;
+  } catch {
+    if (res.status === 401 || res.status === 403) reportPossibleSessionExpiry();
+    throw new ApiError(res.ok ? "UNKNOWN_ERROR" : `HTTP_${res.status}`);
+  }
+
   if (body.status !== "success") {
     if (body.code === "INVALID_ACCESS") reportPossibleSessionExpiry();
-    throw new ApiError(body.code);
+    // 서버의 기본 오류 페이지는 JSON이긴 해도 `{status, code}` 모양이 아닙니다.
+    // 그때도 코드가 비지 않도록 상태 코드를 대신 씁니다.
+    throw new ApiError(body.code ?? `HTTP_${res.status}`);
   }
   return body.data;
 }
@@ -136,6 +149,33 @@ export async function apiPost<T = void>(path: string, params?: Params): Promise<
     body: toSearchParams(params),
   });
   return unwrap<T>(res);
+}
+
+/**
+ * 오디오처럼 **원시 이진 응답**을 돌려주는 엔드포인트용입니다(`chat/speak`·`chat/synthesize`).
+ *
+ * 이 둘만 `ResultDTO` 봉투를 쓰지 않아 `apiPost`로는 받을 수 없습니다. 그렇다고 호출부에서
+ * `fetch`를 직접 쓰면 **세션 만료를 알릴 방법이 없습니다** — `reportPossibleSessionExpiry`는
+ * 이 파일 안에만 있습니다. 다른 화면은 전부 안내 다이얼로그가 뜨는데 그 화면만 조용히
+ * 실패하게 두지 않으려고 여기에 둡니다.
+ *
+ * @param signal 진행 중인 요청을 취소할 `AbortSignal`입니다(화면을 떠날 때 등).
+ */
+export async function apiPostBinary(path: string, params?: Params, signal?: AbortSignal): Promise<Blob> {
+  const res = await fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    credentials: "include",
+    body: toSearchParams(params),
+    signal,
+  });
+  lastActivityAt = Date.now();
+
+  if (!res.ok) {
+    if (res.status === 401) reportPossibleSessionExpiry();
+    throw new ApiError(`HTTP_${res.status}`);
+  }
+  return res.blob();
 }
 
 export async function apiUpload<T = void>(path: string, params: Params, file: File, fileField = "file"): Promise<T> {

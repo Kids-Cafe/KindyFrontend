@@ -12,6 +12,7 @@ import {
 import type { MemberSnapshot } from "@/app/dashboard/retrieveData";
 import type {
   AIPartnerId,
+  ChatMessage,
   ChatSender,
   ChatThread,
   ChildRecord,
@@ -66,8 +67,18 @@ import {
   fetchMyDiaries,
   fetchParentNotes,
 } from "@/app/dashboard/userSync";
-import { ensureAiChat, ensureChat, fetchChatMessages, fetchChats, sendChatMessage } from "@/app/dashboard/chatSync";
+import {
+  ensureAiChat,
+  ensureChat,
+  fetchChatMessages,
+  fetchChats,
+  requestAiReply,
+  sayToAssistant,
+  selfChat,
+  sendChatMessage,
+} from "@/app/dashboard/chatSync";
 import type { ChatParticipants } from "@/app/dashboard/chatSync";
+import { newId } from "@/app/lib/id";
 
 /** 지금 로그인된 사람이 오갈 수 있는 "서버"(유치원) 단위 워크스페이스입니다. */
 export interface DashboardWorkspace {
@@ -97,8 +108,16 @@ interface DashboardStoreValue {
 
   /** 아이 계정이 파트너를 고를 때 사용합니다. */
   choosePartner: (childId: string, partner: AIPartnerId) => void;
-  /** AI 채팅에 메시지를 보냅니다. 서버가 답을 채우면 재조회로 반영됩니다. */
-  sendAiMessage: (childId: string, text: string) => void;
+  /**
+   * AI 채팅에 메시지를 보내고 **답변 텍스트를 돌려줍니다.**
+   * 그 답을 소리로 읽을지는 설정을 아는 화면이 정합니다(스토어는 소리를 모릅니다).
+   * 답을 받지 못했으면 `null`입니다 — 아이가 한 말은 그대로 남아 있습니다.
+   */
+  sendAiMessage: (childId: string, text: string) => Promise<string | null>;
+  /** 마지막으로 보낸 말에 대한 답변만 다시 요청합니다("다시 물어보기"). */
+  retryAiReply: (childId: string) => Promise<string | null>;
+  /** AI 채팅에서 답변을 받지 못한 아이 목록입니다. 화면이 재시도 버튼을 붙이는 데 씁니다. */
+  aiReplyFailed: Record<string, boolean>;
   /** 부모/선생님 채팅 스레드에 텍스트 메시지를 보냅니다. 대화는 보호자별로 따로라 `parentId`가 필요합니다. */
   sendThreadMessage: (childId: string, parentId: string, text: string) => void;
   /** 채팅창에서 "정보 불러오기" 버튼을 눌렀을 때 데이터 카드를 삽입합니다. */
@@ -188,6 +207,7 @@ export function DashboardStoreProvider({
   const [activeWorkspaceId, setActiveWorkspaceId] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [aiTyping, setAiTyping] = useState<Record<string, boolean>>({});
+  const [aiReplyFailed, setAiReplyFailed] = useState<Record<string, boolean>>({});
 
   const data = dataByWorkspace[activeWorkspaceId] ?? null;
 
@@ -718,29 +738,124 @@ export function DashboardStoreProvider({
     [setData],
   );
 
-  const sendAiMessage = useCallback(
-    async (childId: string, text: string) => {
-      const trimmed = text.trim();
-      if (!trimmed || !data) return;
-      const partner = data.classChildren.find((c) => c.id === childId)?.aiPartner ?? data.me?.aiPartner ?? "kio";
+  /**
+   * 아이별로 AI 대화 요청을 **한 줄로 세웁니다.**
+   *
+   * 전송이 겹치면 대화가 갈라집니다. 첫 메시지가 두 번 겹치면 `chat/create`가 두 번 불리고
+   * (서버가 find-or-create가 된 지금은 대화 자체는 하나지만), 두 요청의 재조회 결과가 서로
+   * 다른 시점을 담아 나중에 끝난 쪽이 먼저 끝난 쪽의 말풍선을 지웁니다. 답변을 기다리는
+   * 시간이 최대 1분이라 겹칠 틈은 충분히 넓습니다.
+   */
+  const aiQueue = useRef(new Map<string, Promise<unknown>>());
 
-      setAiTyping((prev) => ({ ...prev, [childId]: true }));
-      try {
-        const chat = await ensureAiChat(data.kindergarten.id, childId);
-        await sendChatMessage(chat.id, trimmed, { role: "user" });
-        const messages = await fetchChatMessages(chat, {
-          nameById: { [childId]: data.me?.nickname ?? "나" },
-          senderById: { [childId]: "child" },
-          assistantName: AI_PARTNER_NAMES[partner],
-        });
-        setData((prev) => ({ ...prev, aiThreadsByChild: { ...prev.aiThreadsByChild, [childId]: { childId, messages } } }));
-      } catch (cause) {
-        console.warn("[Kindy] AI 메시지를 보내지 못했어요.", cause);
-      } finally {
-        setAiTyping((prev) => ({ ...prev, [childId]: false }));
-      }
+  const runQueued = useCallback(<T,>(childId: string, task: () => Promise<T>): Promise<T> => {
+    const previous = aiQueue.current.get(childId) ?? Promise.resolve();
+    const next = previous.catch(() => undefined).then(task);
+    aiQueue.current.set(
+      childId,
+      next.catch(() => undefined),
+    );
+    return next;
+  }, []);
+
+  /** 서버가 준 대화 기록으로 화면을 통째로 맞춥니다(임시 말풍선은 이때 사라집니다). */
+  const reconcileAiThread = useCallback(
+    async (childId: string, chatId: number) => {
+      if (!data) return;
+      const partner = data.classChildren.find((c) => c.id === childId)?.aiPartner ?? data.me?.aiPartner ?? "kio";
+      const messages = await fetchChatMessages(selfChat(chatId, childId, data.kindergarten.id), {
+        nameById: { [childId]: data.me?.nickname ?? "나" },
+        senderById: { [childId]: "child" },
+        assistantName: AI_PARTNER_NAMES[partner],
+      });
+      setData((prev) => ({
+        ...prev,
+        aiThreadsByChild: { ...prev.aiThreadsByChild, [childId]: { childId, chatId, messages } },
+      }));
     },
     [data, setData],
+  );
+
+  const sendAiMessage = useCallback(
+    (childId: string, text: string): Promise<string | null> => {
+      const trimmed = text.trim();
+      if (!trimmed || !data) return Promise.resolve(null);
+      const kindergartenId = data.kindergarten.id;
+      const myName = data.me?.nickname ?? "나";
+
+      return runQueued(childId, async () => {
+        // 아이의 말풍선을 먼저 붙입니다. 답변까지는 서버 타임아웃 기준 최대 1분이라,
+        // 다 끝난 뒤에 그리면 아이는 자기가 보낸 말조차 한참 못 봅니다.
+        const pending: ChatMessage = {
+          id: newId(),
+          sender: "child",
+          senderName: myName,
+          kind: "text",
+          text: trimmed,
+          time: Date.now(),
+        };
+        setData((prev) => {
+          const thread = prev.aiThreadsByChild[childId] ?? { childId, messages: [] };
+          return {
+            ...prev,
+            aiThreadsByChild: {
+              ...prev.aiThreadsByChild,
+              [childId]: { ...thread, messages: [...thread.messages, pending] },
+            },
+          };
+        });
+
+        setAiTyping((prev) => ({ ...prev, [childId]: true }));
+        setAiReplyFailed((prev) => ({ ...prev, [childId]: false }));
+
+        // 실패했을 때 무엇을 되돌릴지 알려면 대화 id가 필요한데, 이번 전송에서 막 알아낸
+        // 값은 아직 `data`에 없습니다(상태 갱신은 재조회 뒤입니다). 그래서 여기 들고 갑니다.
+        let chatId = data.aiThreadsByChild[childId]?.chatId;
+        try {
+          const chat = await ensureAiChat(kindergartenId, childId);
+          chatId = chat.id;
+          const turn = await sayToAssistant(chat.id, trimmed);
+          await reconcileAiThread(childId, chat.id);
+          return turn.reply?.content ?? null;
+        } catch (cause) {
+          console.warn("[Kindy] AI 메시지를 보내지 못했어요.", cause);
+          // 아이가 한 말은 이미 서버에 있을 수도, 없을 수도 있습니다(`say`는 저장에 성공한
+          // 뒤 답변에서 실패할 수 있습니다). 재조회가 실제 상태를 그대로 비춰 주므로
+          // 저장된 말은 남고 임시 말풍선은 정리됩니다.
+          if (chatId) await reconcileAiThread(childId, chatId).catch(() => undefined);
+          setAiReplyFailed((prev) => ({ ...prev, [childId]: true }));
+          return null;
+        } finally {
+          setAiTyping((prev) => ({ ...prev, [childId]: false }));
+        }
+      });
+    },
+    [data, setData, runQueued, reconcileAiThread],
+  );
+
+  const retryAiReply = useCallback(
+    (childId: string): Promise<string | null> => {
+      if (!data) return Promise.resolve(null);
+      const chatId = data.aiThreadsByChild[childId]?.chatId;
+      if (!chatId) return Promise.resolve(null);
+
+      return runQueued(childId, async () => {
+        setAiTyping((prev) => ({ ...prev, [childId]: true }));
+        try {
+          const reply = await requestAiReply(chatId);
+          await reconcileAiThread(childId, chatId);
+          setAiReplyFailed((prev) => ({ ...prev, [childId]: false }));
+          return reply?.content ?? null;
+        } catch (cause) {
+          console.warn("[Kindy] 답변을 다시 받지 못했어요.", cause);
+          setAiReplyFailed((prev) => ({ ...prev, [childId]: true }));
+          return null;
+        } finally {
+          setAiTyping((prev) => ({ ...prev, [childId]: false }));
+        }
+      });
+    },
+    [data, runQueued, reconcileAiThread],
   );
 
   const sendThreadMessage = useCallback(
@@ -817,9 +932,11 @@ export function DashboardStoreProvider({
       selectChild,
       choosePartner,
       sendAiMessage,
+      retryAiReply,
       sendThreadMessage,
       insertDataCard,
       aiTyping,
+      aiReplyFailed,
       addNotice,
       togglePinNotice,
       toggleNoticeBanner,
@@ -859,9 +976,11 @@ export function DashboardStoreProvider({
       selectChild,
       choosePartner,
       sendAiMessage,
+      retryAiReply,
       sendThreadMessage,
       insertDataCard,
       aiTyping,
+      aiReplyFailed,
       addNotice,
       togglePinNotice,
       toggleNoticeBanner,
@@ -1116,6 +1235,7 @@ async function loadChatThreads(
       if (!chat) return;
       aiThreadsByChild[child.id] = {
         childId: child.id,
+        chatId: chat.id,
         messages: await fetchChatMessages(chat, {
           ...participants,
           assistantName: AI_PARTNER_NAMES[child.aiPartner ?? "kio"],

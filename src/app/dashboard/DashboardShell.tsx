@@ -17,7 +17,6 @@ import type { FeatureId } from "@/app/dashboard/types";
 import type { ChatTarget } from "@/app/dashboard/features/TeacherChatFeature";
 import { PartnerSelect } from "@/app/dashboard/features/PartnerSelect";
 import { AiChatFeature } from "@/app/dashboard/features/AiChatFeature";
-import { VoiceChatFeature } from "@/app/dashboard/features/VoiceChatFeature";
 import { DiaryFeature } from "@/app/dashboard/features/DiaryFeature";
 import { ReportsFeature } from "@/app/dashboard/features/ReportsFeature";
 import { DashboardHomeFeature } from "@/app/dashboard/features/DashboardHomeFeature";
@@ -203,7 +202,7 @@ function DashboardBody({ onMembershipsChanged }: { onMembershipsChanged: () => v
                   onSelected={() => setActiveFeature("ai-text-chat")}
                 />
               )}
-              {(activeFeature === "ai-text-chat" || activeFeature === "ai-voice-chat") && !data.me.aiPartner && (
+              {activeFeature === "ai-text-chat" && !data.me.aiPartner && (
                 <button
                   onClick={() => setActiveFeature("partner-select")}
                   className="text-sm font-bold px-5 py-3 rounded-2xl text-white transition-transform active:scale-95"
@@ -214,9 +213,6 @@ function DashboardBody({ onMembershipsChanged }: { onMembershipsChanged: () => v
               )}
               {activeFeature === "ai-text-chat" && data.me.aiPartner && (
                 <AiChatFeature childId={data.me.id} partner={data.me.aiPartner} />
-              )}
-              {activeFeature === "ai-voice-chat" && data.me.aiPartner && (
-                <VoiceChatFeature partner={data.me.aiPartner} />
               )}
               {activeFeature === "diary" && <DiaryFeature childId={data.me.id} />}
             </>

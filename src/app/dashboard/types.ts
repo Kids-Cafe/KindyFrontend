@@ -204,6 +204,12 @@ export interface ChatThread {
 /** 아이 ↔ AI 파트너 채팅입니다. 아이 1명당 1개입니다. */
 export interface AiChatThread {
   childId: string;
+  /**
+   * 서버 대화의 id입니다. 아직 한 번도 말을 걸지 않았으면 없습니다.
+   * 아이 ↔ AI 대화는 `host === client === childId`인 자기대화라, 이 id 하나만 있으면
+   * `selfChat()`으로 `ChatDTO`를 복원할 수 있습니다.
+   */
+  chatId?: number;
   messages: ChatMessage[];
 }
 
@@ -307,7 +313,6 @@ export interface ParentNote {
 export type FeatureId =
   | "partner-select"
   | "ai-text-chat"
-  | "ai-voice-chat"
   | "diary"
   | "reports"
   | "students"

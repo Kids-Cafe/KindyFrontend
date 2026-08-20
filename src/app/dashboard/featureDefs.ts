@@ -1,7 +1,6 @@
 import {
   Sparkles,
   MessageCircle,
-  Mic,
   BookOpen,
   LineChart,
   Home,
@@ -20,8 +19,8 @@ import type { DashboardData, DashboardRole, FeatureDef, PermissionKey } from "@/
 export const FEATURES_BY_ROLE: Record<DashboardRole, FeatureDef[]> = {
   child: [
     { id: "partner-select", label: "AI 파트너", hint: "키오 · 키나 고르기", icon: Sparkles },
-    { id: "ai-text-chat", label: "텍스트 채팅", hint: "오늘 있었던 일 이야기하기", icon: MessageCircle },
-    { id: "ai-voice-chat", label: "음성 채팅", hint: "목소리로 대화하기", icon: Mic },
+    // 글로 쓰든 말로 하든 같은 대화창 하나입니다(마이크·스피커는 채팅 화면 안에 있습니다).
+    { id: "ai-text-chat", label: "채팅", hint: "쓰거나 말하며 이야기하기", icon: MessageCircle },
     { id: "diary", label: "나의 일기장", hint: "AI가 정리해준 하루", icon: BookOpen },
     { id: "schedule", label: "일정", hint: "다가오는 일정 보기", icon: CalendarDays },
     { id: "photos", label: "사진첩", hint: "우리 유치원 사진첩", icon: Images },
