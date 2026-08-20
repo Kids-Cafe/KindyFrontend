@@ -17,6 +17,7 @@ import { openAddressSearch } from "@/app/auth/addressSearch";
 import { useDashboardStoreOptional } from "@/app/dashboard/DashboardStoreContext";
 import { useChildVoiceSettings } from "@/app/dashboard/childVoiceSettings";
 import { useMyFamily, type MyFamily } from "@/app/dashboard/useMyFamily";
+import { useMyKindergartens } from "@/app/dashboard/useMyKindergartens";
 import { ChildAccountsPanel } from "@/app/sections/ChildAccountsPanel";
 import { visibleMenuItems, type MenuKey } from "@/app/sections/mypageMenu";
 import {
@@ -52,6 +53,12 @@ function MyPagePanel({
   const { user, updateProfile, logout } = useAuth();
   const store = useDashboardStoreOptional();
   const voice = useChildVoiceSettings(user?.id ?? "unknown");
+  const kindergartens = useMyKindergartens();
+  const isChild = isChildAccount(user);
+  const childNameById = useMemo(
+    () => new Map(family.children.map((c) => [c.id, c.name])),
+    [family.children],
+  );
 
   // 별칭은 계정이 아니라 유치원마다 붙습니다. 지금 보고 있는 유치원의 값을 고칩니다.
   const [nickname, setNickname] = useState(store?.data.myNickname ?? "");
@@ -67,6 +74,8 @@ function MyPagePanel({
   const [phone, setPhone] = useState(user?.phone ?? "");
   const [kinderQuery, setKinderQuery] = useState("");
   const [kinderResults, setKinderResults] = useState<KindergartenInfo[]>([]);
+  /** 보호자가 가입을 신청해 줄 아이입니다. 아이가 하나뿐이면 아래에서 자동으로 잡힙니다. */
+  const [joinChildId, setJoinChildId] = useState<string | undefined>(undefined);
   /** 유치원 검색 아래의 "직접 등록" 폼을 펼쳤는지. 기본은 접어 두고 검색을 먼저 권합니다. */
   const [showRegister, setShowRegister] = useState(false);
   const [confirmWithdraw, setConfirmWithdraw] = useState(false);
@@ -174,6 +183,16 @@ function MyPagePanel({
           </p>
         );
       }
+      // 학부모는 유치원의 멤버가 아니라 아이를 통해 닿는 사람이라 별칭을 걸어 둘 관계 행이
+      // 없습니다. 저장을 시도하면 서버가 거절하므로 화면에서 먼저 이유를 말합니다.
+      if (store.data.role === "parent") {
+        return (
+          <p className="text-sm leading-relaxed" style={{ color: "#6B7280" }}>
+            별칭은 유치원에 다니는 사람이 그 안에서 불리는 이름이에요. 보호자 계정에는 따로
+            정하지 않고, 아이의 별칭은 아이 계정에서 정할 수 있어요.
+          </p>
+        );
+      }
       return (
         <div className="space-y-4">
           <FieldLabel>{store.data.kindergarten.name}에서 쓸 별칭</FieldLabel>
@@ -245,27 +264,79 @@ function MyPagePanel({
     case "kindergartenClass": {
       // 유치원 등록은 사업자등록번호가 필요한 원장의 일이라 성인 계정에서만 열어 둡니다.
       const canRegisterKindergarten = user.accountType !== "child";
+      // 유치원에 다니는 건 아이지 보호자가 아닙니다. 그래서 어른 계정이 "선생님이 아닌"
+      // 경우 신청은 반드시 아이 이름으로 나갑니다 — 아이를 고르지 않으면 보낼 수 없습니다.
+      const joinsForChild = !isChild && user.role !== "teacher";
+      // 아이가 한 명뿐이면 고를 것이 없습니다. 굳이 한 번 더 누르게 하지 않고 그 아이를 봅니다.
+      const defaultChildId = family.children.length === 1 ? family.children[0].id : undefined;
+      const selectedChildId = joinChildId ?? defaultChildId;
+      const joinTarget = joinsForChild ? selectedChildId : undefined;
+      const canJoin = !joinsForChild || Boolean(joinTarget);
+
       return (
         <div className="space-y-4">
           <ReceivedInvites onAccepted={() => onDone("유치원 초대를 수락했어요")} />
 
-          {user.kindergarten ? (
-            <>
-              <FieldLabel>소속 유치원</FieldLabel>
-              <TextField value={user.kindergarten.name} readOnly />
-              {store && user.role === "teacher" && (
-                <>
-                  <FieldLabel>소속 반</FieldLabel>
-                  <TextField value={store.data.teacher.className} readOnly />
-                </>
-              )}
-            </>
+          <FieldLabel>소속 유치원</FieldLabel>
+          {kindergartens.isLoading ? (
+            <p className="text-sm" style={{ color: "#9CA3AF" }}>불러오는 중이에요…</p>
+          ) : kindergartens.list.length > 0 ? (
+            <div className="space-y-2">
+              {kindergartens.list.map((kg) => (
+                <div key={kg.id} className="rounded-2xl px-4 py-3" style={{ background: "#FAFAFA", border: "1.5px solid #E5E7EB" }}>
+                  <p className="text-sm font-bold" style={{ color: "#1F0A3C" }}>{kg.name}</p>
+                  <p className="text-xs" style={{ color: "#9CA3AF" }}>
+                    {/* 학부모에게 내려오는 건 아이의 소속입니다. 그걸 "내 소속"으로 적으면
+                        학부모가 유치원의 멤버인 것처럼 읽힙니다. */}
+                    {kg.viaChild
+                      ? `${childNameById.get(kg.memberId) ?? kg.memberId}이(가) 다니고 있어요`
+                      : kg.nickname
+                        ? `별칭 ${kg.nickname}`
+                        : "내 소속"}
+                  </p>
+                </div>
+              ))}
+            </div>
           ) : (
             <p className="text-sm" style={{ color: "#6B7280" }}>아직 가입한 유치원이 없어요. 아래에서 검색해서 가입하거나, 원장님의 초대를 기다려주세요.</p>
           )}
 
           <div className="pt-2" style={{ borderTop: "1px solid #F3F4F6" }}>
             <FieldLabel>유치원 검색해서 가입하기</FieldLabel>
+
+            {joinsForChild && (
+              <div className="mb-3">
+                {family.children.length === 0 ? (
+                  <p className="text-xs" style={{ color: "#9CA3AF" }}>
+                    유치원에 다니는 건 아이라서, 먼저 &ldquo;우리 아이&rdquo;에서 아이 계정을 만들거나 연결해주세요.
+                  </p>
+                ) : (
+                  <>
+                    <p className="text-xs mb-2" style={{ color: "#9CA3AF" }}>어느 아이의 가입을 신청할까요?</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {family.children.map((child) => {
+                        const selected = child.id === selectedChildId;
+                        return (
+                          <button
+                            key={child.id}
+                            onClick={() => setJoinChildId(child.id)}
+                            aria-pressed={selected}
+                            className="px-3 py-1.5 rounded-full text-xs font-bold transition-colors"
+                            style={{
+                              background: selected ? "rgba(232,121,160,0.14)" : "#F3F4F6",
+                              color: selected ? "#C0568A" : "#6B7280",
+                            }}
+                          >
+                            {child.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
             <div className="flex gap-2 mb-3">
               <TextField value={kinderQuery} onChange={setKinderQuery} placeholder="유치원 이름" />
               <button
@@ -280,15 +351,23 @@ function MyPagePanel({
               {kinderResults.map((kg) => (
                 <button
                   key={kg.id}
+                  disabled={!canJoin}
                   // 가입은 곧바로 확정되지 않고 원장의 수락을 기다리는 요청으로 남습니다.
-                  // 관계 타입은 온보딩과 같은 규칙입니다 — 선생님만 TEACHER이고, 학부모와
-                  // 아이는 CHILD입니다(학부모 계정이 TEACHER로 신청해 수락되면 교사가 됐습니다).
+                  // 선생님만 자기 이름으로 TEACHER 신청을 냅니다. 학부모는 아이를 지목한
+                  // CHILD 신청을 내고(서버가 T_FAMILY로 보호자인지 확인합니다), 아이 계정은
+                  // 자기 이름으로 CHILD 신청을 냅니다.
                   onClick={() =>
-                    void requestJoinKindergarten(kg.id, user.role === "teacher" ? "TEACHER" : "CHILD")
-                      .then(() => onDone(`${kg.name}에 가입을 신청했어요. 원장님이 수락하면 소속돼요.`))
+                    void requestJoinKindergarten(kg.id, user.role === "teacher" ? "TEACHER" : "CHILD", joinTarget)
+                      .then(() =>
+                        onDone(
+                          joinTarget
+                            ? `${kg.name}에 ${childNameById.get(joinTarget) ?? joinTarget}의 가입을 신청했어요. 원장님이 수락하면 소속돼요.`
+                            : `${kg.name}에 가입을 신청했어요. 원장님이 수락하면 소속돼요.`,
+                        ),
+                      )
                       .catch(() => onDone("가입 신청에 실패했어요. 잠시 후 다시 시도해주세요."))
                   }
-                  className="w-full text-left rounded-2xl px-4 py-3 transition-all hover:scale-[1.01] active:scale-95"
+                  className="w-full text-left rounded-2xl px-4 py-3 transition-all hover:scale-[1.01] active:scale-95 disabled:opacity-50 disabled:hover:scale-100"
                   style={{ background: "#FAFAFA", border: "1.5px solid #E5E7EB" }}
                 >
                   <p className="text-sm font-bold" style={{ color: "#1F0A3C" }}>{kg.name}</p>
@@ -415,7 +494,6 @@ function MyPagePanel({
       // 실명과 이메일은 가입할 때 확정됩니다. 유치원에서 불리는 이름을 바꾸려면 "별칭 변경"으로 갑니다.
       // 아이 계정은 이메일이 없어(서버 CHECK 제약) 빈 칸이 나오므로, 대신 아이 계정에만 있는
       // 값들을 보여줍니다. 이 값들을 고치는 건 아이 자신이 아니라 보호자의 "우리 아이 정보"입니다.
-      const isChild = isChildAccount(user);
       return (
         <div className="space-y-4">
           <FieldLabel>이름</FieldLabel>

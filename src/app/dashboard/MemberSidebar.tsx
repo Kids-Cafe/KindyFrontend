@@ -89,7 +89,7 @@ function ClassGroup({
  * 역할별로 보여주는 대상이 다릅니다:
  * - 원장: 반마다 접고 펼칠 수 있는 카테고리 (담임 교사 + 학생 목록, 클릭 시 각각의 프로필)
  * - 선생님: 학급 학생 전체 (클릭 시 학생 정보창)
- * - 부모: 담임 선생님(클릭 시 채팅) + 우리 아이(클릭 시 리포트)
+ * - 부모: 담임 선생님(클릭 시 채팅) + 우리 아이 전부(고른 아이는 리포트로, 나머지는 전환)
  * - 아이: 함께 하는 AI 파트너 상태 + 반 친구들(참고용)
  */
 export function MemberSidebar({
@@ -97,11 +97,13 @@ export function MemberSidebar({
   onOpenStudent,
   onSelectFeature,
   onOpenTeacher,
+  onSelectChild,
 }: {
   data: DashboardData;
   onOpenStudent: (childId: string) => void;
   onSelectFeature: (id: FeatureId) => void;
   onOpenTeacher: (teacherId: string) => void;
+  onSelectChild: (childId: string) => void;
 }) {
   return (
     <div className="w-64 h-full shrink-0 border-l bg-card overflow-y-auto px-3 py-4" style={{ borderColor: "rgba(232,121,160,0.15)" }}>
@@ -144,30 +146,53 @@ export function MemberSidebar({
       {data.role === "parent" && data.myChild && (
         <>
           <GroupLabel>담임 선생님</GroupLabel>
-          <button
-            onClick={() => onSelectFeature("parent-chat")}
-            className="w-full flex items-center gap-2.5 px-2 py-2 rounded-xl text-left mb-4 transition-colors hover:bg-black/[0.03]"
-          >
-            <span className="w-8 h-8 rounded-full flex items-center justify-center text-sm shrink-0 font-bold text-white" style={{ background: "linear-gradient(135deg,#60A5FA,#3B82F6)" }}>
-              {data.teacher.name.charAt(0)}
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block text-sm font-bold truncate" style={{ color: "#3B1355" }}>{data.teacher.name}</span>
-              <span className="block text-xs truncate" style={{ color: "#A06080" }}>{data.teacher.className} 담임</span>
-            </span>
-          </button>
+          {/*
+            담임은 `homeroomTeacher`로만 표시합니다. `data.teacher`는 아무 자리도 없을 때
+            로그인한 본인으로 되돌아가는 자리채움이라, 그걸 쓰면 반이 없거나 담임이 아직
+            정해지지 않은 아이의 학부모가 자기 이름을 "담임 선생님"으로 보게 됩니다.
+          */}
+          {data.homeroomTeacher ? (
+            <button
+              onClick={() => onSelectFeature("parent-chat")}
+              className="w-full flex items-center gap-2.5 px-2 py-2 rounded-xl text-left mb-4 transition-colors hover:bg-black/[0.03]"
+            >
+              <span className="w-8 h-8 rounded-full flex items-center justify-center text-sm shrink-0 font-bold text-white" style={{ background: "linear-gradient(135deg,#60A5FA,#3B82F6)" }}>
+                {data.homeroomTeacher.name.charAt(0)}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-bold truncate" style={{ color: "#3B1355" }}>{data.homeroomTeacher.name}</span>
+                <span className="block text-xs truncate" style={{ color: "#A06080" }}>{data.homeroomTeacher.className} 담임</span>
+              </span>
+            </button>
+          ) : (
+            <p className="px-2 mb-4 text-xs" style={{ color: "#A06080" }}>
+              아직 담임 선생님이 정해지지 않았어요.
+            </p>
+          )}
 
-          <GroupLabel>우리 아이</GroupLabel>
-          <button
-            onClick={() => onSelectFeature("reports")}
-            className="w-full flex items-center gap-2.5 px-2 py-2 rounded-xl text-left transition-colors hover:bg-black/[0.03]"
-          >
-            <span className="w-8 h-8 rounded-full flex items-center justify-center text-sm shrink-0" style={{ background: data.myChild.avatarColor }}>{data.myChild.avatarEmoji}</span>
-            <span className="min-w-0 flex-1">
-              <span className="block text-sm font-bold truncate" style={{ color: "#3B1355" }}>{data.myChild.nickname}</span>
-              <span className="block text-xs truncate" style={{ color: "#A06080" }}>성장 리포트 보기</span>
-            </span>
-          </button>
+          <GroupLabel>우리 아이{(data.myChildren?.length ?? 0) > 1 ? ` — ${data.myChildren?.length}` : ""}</GroupLabel>
+          {/* 아이가 여럿이면 전부 보여 주고, 누르면 그 아이를 기준으로 화면이 바뀝니다. */}
+          <div className="space-y-1">
+            {(data.myChildren ?? [data.myChild]).map((child) => {
+              const selected = child.id === data.myChild?.id;
+              return (
+                <button
+                  key={child.id}
+                  onClick={() => (selected ? onSelectFeature("reports") : onSelectChild(child.id))}
+                  className="w-full flex items-center gap-2.5 px-2 py-2 rounded-xl text-left transition-colors hover:bg-black/[0.03]"
+                  style={selected ? { background: "rgba(232,121,160,0.10)" } : undefined}
+                >
+                  <span className="w-8 h-8 rounded-full flex items-center justify-center text-sm shrink-0" style={{ background: child.avatarColor }}>{child.avatarEmoji}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-bold truncate" style={{ color: "#3B1355" }}>{child.nickname}</span>
+                    <span className="block text-xs truncate" style={{ color: "#A06080" }}>
+                      {selected ? "성장 리포트 보기" : `${child.className} · 이 아이 보기`}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </>
       )}
 

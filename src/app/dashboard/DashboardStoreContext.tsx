@@ -87,6 +87,12 @@ interface DashboardStoreValue {
   activeWorkspaceId: string;
   switchWorkspace: (workspaceId: string) => void;
 
+  /**
+   * 아이가 둘 이상인 학부모가 기준으로 삼을 아이를 고릅니다.
+   * `data.myChild`를 읽는 화면 전부(일기·리포트·채팅·준비물·일정)가 이 선택을 따릅니다.
+   */
+  selectChild: (childId: string) => void;
+
   /** 아이 계정이 파트너를 고를 때 사용합니다. */
   choosePartner: (childId: string, partner: AIPartnerId) => void;
   /** AI 채팅에 메시지를 보냅니다. 서버가 답을 채우면 재조회로 반영됩니다. */
@@ -222,10 +228,12 @@ export function DashboardStoreProvider({
             }
             const role = roleFromRelationship(membership, isOwner, user);
             // 별칭은 유치원마다 다릅니다. 멤버 목록을 받기 전에도 제 이름으로 불리도록
-            // 관계에 붙어 온 별칭을 그대로 넘깁니다.
+            // 관계에 붙어 온 별칭을 그대로 넘깁니다. 단 학부모에게 내려온 행은 *아이의* 행이라
+            // 거기 붙은 별칭은 아이의 것입니다 — 그걸 쓰면 학부모가 아이 별칭으로 불립니다.
+            const myNickname = membership.userId === user.id ? membership.nickname : undefined;
             return [
               String(membership.kindergartenId),
-              emptyDashboardData(user, kindergarten, role, membership.nickname),
+              emptyDashboardData(user, kindergarten, role, myNickname),
             ] as const;
           }),
         );
@@ -270,7 +278,15 @@ export function DashboardStoreProvider({
           fetchFamilies().catch(() => []),
         ]);
 
-        const baseSnapshot = buildMemberSnapshot(user, target.role, kindergarten, classes, members, families);
+        const baseSnapshot = buildMemberSnapshot(
+          user,
+          target.role,
+          kindergarten,
+          classes,
+          members,
+          families,
+          target.selectedChildId,
+        );
 
         // 나이·성별은 관계 응답에 없고 아이 계정 프로필에만 있습니다. user/info가 childId를
         // 받게 되면서 볼 수 있는 아이에 한해 채울 수 있게 됐습니다. 권한이 없는 아이는
@@ -356,6 +372,25 @@ export function DashboardStoreProvider({
       });
     },
     [dataByWorkspace],
+  );
+
+  /**
+   * 기준 아이를 바꿉니다. 리포트·알림장·일기는 이미 `myChildren` 전부를 받아 두므로
+   * 서버를 다시 부를 필요 없이 가리키는 곳만 옮기면 됩니다. `myChild`를 함께 갱신해서
+   * 그 필드를 읽는 화면들이 그대로 따라오게 합니다.
+   */
+  const selectChild = useCallback(
+    (childId: string) => {
+      setData((prev) => {
+        const target = prev.myChildren?.find((c) => c.id === childId);
+        if (!target) return prev;
+
+        // 아이가 바뀌면 담임도 바뀝니다.
+        const homeroomTeacher = prev.teachers.find((t) => t.classId === target.classId);
+        return { ...prev, selectedChildId: childId, myChild: target, homeroomTeacher };
+      });
+    },
+    [setData],
   );
 
   const kindergartenId = data?.kindergarten.id ?? 0;
@@ -776,6 +811,7 @@ export function DashboardStoreProvider({
       workspaces,
       activeWorkspaceId,
       switchWorkspace,
+      selectChild,
       choosePartner,
       sendAiMessage,
       sendThreadMessage,
@@ -817,6 +853,7 @@ export function DashboardStoreProvider({
       workspaces,
       activeWorkspaceId,
       switchWorkspace,
+      selectChild,
       choosePartner,
       sendAiMessage,
       sendThreadMessage,

@@ -34,7 +34,7 @@ import { RecommendationsFeature } from "@/app/dashboard/features/Recommendations
 /** @param onMembershipsChanged 마이페이지에서 유치원을 새로 등록/가입했을 때 워크스페이스 목록을 다시 받게 합니다. */
 function DashboardBody({ onMembershipsChanged }: { onMembershipsChanged: () => void }) {
   const { user } = useAuth();
-  const { data, workspaces, activeWorkspaceId, switchWorkspace } = useDashboardStore();
+  const { data, workspaces, activeWorkspaceId, switchWorkspace, selectChild } = useDashboardStore();
   const features = FEATURES_BY_ROLE[data.role];
 
   const [activeFeature, setActiveFeature] = useState<FeatureId>(() =>
@@ -138,6 +138,35 @@ function DashboardBody({ onMembershipsChanged }: { onMembershipsChanged: () => v
             {activeDef && <activeDef.icon className="w-4 h-4 shrink-0" style={{ color: "#E879A0" }} />}
             <span className="font-bold text-sm truncate" style={{ color: "#3B1355" }}>{activeDef?.label}</span>
           </div>
+          {/*
+            아이를 둘 이상 이 유치원에 보낸 학부모용 전환기입니다. 일기·리포트·알림장·채팅이
+            모두 `data.myChild` 하나를 기준으로 도는데, 그동안 그 값이 첫째로 고정돼 있어
+            둘째의 화면에는 들어갈 방법이 아예 없었습니다.
+          */}
+          {data.role === "parent" && (data.myChildren?.length ?? 0) > 1 && (
+            <div className="flex items-center gap-1 shrink-0 mr-2">
+              {data.myChildren?.map((child) => {
+                const selected = child.id === data.myChild?.id;
+                return (
+                  <button
+                    key={child.id}
+                    onClick={() => selectChild(child.id)}
+                    aria-pressed={selected}
+                    className="flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-bold transition-colors"
+                    style={{
+                      background: selected ? "rgba(232,121,160,0.14)" : "transparent",
+                      color: selected ? "#C0568A" : "#A06080",
+                    }}
+                  >
+                    <span className="w-5 h-5 rounded-full flex items-center justify-center text-[11px] shrink-0" style={{ background: child.avatarColor }}>
+                      {child.avatarEmoji}
+                    </span>
+                    <span className="truncate max-w-[6rem]">{child.nickname}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
           <button
             onClick={() => setMemberOpen((v) => !v)}
             aria-label={memberOpen ? "멤버 목록 닫기" : "멤버 목록 열기"}
@@ -229,7 +258,7 @@ function DashboardBody({ onMembershipsChanged }: { onMembershipsChanged: () => v
         style={{ width: memberOpen ? 256 : 0 }}
       >
         <div className="w-64 h-full">
-          <MemberSidebar data={data} onOpenStudent={setOpenStudentId} onSelectFeature={handleSelectFeature} onOpenTeacher={setOpenTeacherId} />
+          <MemberSidebar data={data} onOpenStudent={setOpenStudentId} onSelectFeature={handleSelectFeature} onOpenTeacher={setOpenTeacherId} onSelectChild={selectChild} />
         </div>
       </div>
 

@@ -326,13 +326,20 @@ export interface DashboardData {
   myNickname?: string;
   /** 로그인한 사람 본인이 "아이"일 때만 채워집니다. */
   me?: ChildRecord;
-  /** 로그인한 사람이 "부모"일 때, 화면이 기준으로 삼는 아이입니다. 여럿이면 `myChildren[0]`입니다. */
+  /** 로그인한 사람이 "부모"일 때, 화면이 기준으로 삼는 아이입니다. `selectedChildId`가 정합니다. */
   myChild?: ChildRecord;
   /** 이 유치원에 다니는 내 아이 전부입니다. 리포트·알림장은 이 목록 전체를 받아옵니다. */
   myChildren?: ChildRecord[];
+  /** 아이가 둘 이상인 학부모가 지금 고른 아이입니다. 고르지 않았으면 `myChildren[0]`을 봅니다. */
+  selectedChildId?: string;
   /** 로그인한 사람이 "선생님"일 때 담당 학급입니다. */
   myClassChildren?: ChildRecord[];
   teacher: TeacherRecord;
+  /**
+   * 지금 보고 있는 아이의 담임입니다. 아직 담임이 없으면 undefined입니다.
+   * `teacher`는 아무 자리도 없을 때 본인으로 되돌아가므로 담임 표시에 쓰면 안 됩니다.
+   */
+  homeroomTeacher?: TeacherRecord;
   /** 학급 전체 아이 목록 (선생님 시점의 멤버 목록에 사용) */
   classChildren: ChildRecord[];
   diaryByChild: Record<string, DiaryEntry[]>;

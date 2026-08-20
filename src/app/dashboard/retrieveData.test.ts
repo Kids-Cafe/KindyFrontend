@@ -53,17 +53,26 @@ describe("roleFromRelationship", () => {
     expect(roleFromRelationship(rel, false, makeUser())).toBe("teacher");
   });
 
-  it("CHILD 관계는 계정 종류에 따라 아이 또는 학부모다", () => {
+  it("내 CHILD 관계는 언제나 아이 본인이다", () => {
+    // 유치원의 CHILD 관계에는 CHILD 계정만 들어갑니다(서버가 강제). 계정 종류는 예전
+    // 세션에서 비어 있을 수 있어 판정에 쓰지 않고, 관계 행의 주인만 봅니다.
     const rel = relationship({ userId: "user-1", type: "CHILD" });
     expect(roleFromRelationship(rel, false, makeUser({ accountType: "child" }))).toBe("child");
+    expect(roleFromRelationship(rel, false, makeUser({ accountType: undefined }))).toBe("child");
+  });
+
+  it("내 것이 아닌 관계 행은 아이를 통해 닿은 것이므로 학부모다", () => {
+    // 학부모는 유치원의 멤버가 아니라서 자기 행이 없습니다. 서버가 T_FAMILY를 타고
+    // 아이의 행을 대신 내려주므로, userId가 나와 다르면 그게 곧 학부모라는 뜻입니다.
+    const rel = relationship({ userId: "child-9", type: "CHILD" });
     expect(roleFromRelationship(rel, false, makeUser({ accountType: "adult" }))).toBe("parent");
   });
 
   it("같은 계정이라도 유치원마다 역할이 다를 수 있다", () => {
     const user = makeUser();
     expect(roleFromRelationship(relationship({ userId: "user-1", type: "TEACHER" }), true, user)).toBe("director");
-    // 다른 유치원에는 학부모로 등록돼 있을 수 있습니다.
-    expect(roleFromRelationship(relationship({ userId: "user-1", type: "CHILD" }), false, user)).toBe("parent");
+    // 다른 유치원에는 아이를 보낸 학부모일 수 있습니다.
+    expect(roleFromRelationship(relationship({ userId: "child-9", type: "CHILD" }), false, user)).toBe("parent");
   });
 });
 

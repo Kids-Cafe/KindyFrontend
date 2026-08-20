@@ -153,10 +153,33 @@ export function OnboardingWizard({ onComplete }: { onComplete: () => void }) {
         {step === "kinderParent" && (
           <>
             <ReceivedInvites onAccepted={() => finish({})} />
-            <KindergartenSearchStep
-              onSelect={(kindergarten) => finish({ role: "parent", kindergarten }, { type: "CHILD" })}
-              onSkip={() => finish({ role: "parent" })}
-            />
+            {/*
+              아이 계정만 자기 이름으로 가입을 신청합니다. 보호자는 유치원의 멤버가 아니라
+              아이를 통해 닿는 사람이고, 신청은 아이 이름으로 나가야 합니다 — 그런데 가입
+              직후에는 연결된 아이가 아직 없습니다. 여기서 CHILD 신청을 그대로 보내면
+              보호자 본인이 원생으로 등록돼 아이들 명단에 섞여 버립니다.
+            */}
+            {isChildAccount ? (
+              <KindergartenSearchStep
+                onSelect={(kindergarten) => finish({ role: "parent", kindergarten }, { type: "CHILD" })}
+                onSkip={() => finish({ role: "parent" })}
+              />
+            ) : (
+              <div className="space-y-4">
+                <p className="text-sm leading-relaxed" style={{ color: "#6B7280" }}>
+                  유치원에 다니는 건 아이라서, 가입 신청도 아이 이름으로 보내요.
+                  먼저 마이페이지의 &ldquo;우리 아이&rdquo;에서 아이 계정을 만들거나 연결한 뒤,
+                  아이가 다닐 유치원을 찾아 신청해주세요.
+                </p>
+                <button
+                  onClick={() => void finish({ role: "parent" })}
+                  className="w-full rounded-2xl py-3 text-sm font-bold text-white transition-transform active:scale-[0.98]"
+                  style={{ background: "linear-gradient(135deg,#E879A0,#F472B6)" }}
+                >
+                  알겠어요, 시작할게요
+                </button>
+              </div>
+            )}
           </>
         )}
       </div>

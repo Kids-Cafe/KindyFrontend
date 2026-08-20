@@ -8,18 +8,19 @@ import {
   rejectInviteOnServer,
 } from "@/app/dashboard/backendSync";
 import { FamilyInvites } from "@/app/auth/FamilyInvites";
-import { isChildAccount as isChildAccountOf } from "@/app/auth/accountType";
 import type { InviteDTO } from "@/app/lib/dto";
 
 /**
  * 초대장에 적힌 관계 종류를 사람이 읽는 말로 바꿉니다.
  *
- * 서버의 관계 타입은 CHILD/TEACHER 둘뿐이라, 학부모로 초대받은 사람과 아이 본인이
- * 똑같이 CHILD로 옵니다(`backend-sync-gaps.md` 2.6). 계정 종류로 갈라 씁니다.
+ * 티켓에 적힌 계정 유형(`accountType`)을 봅니다. 예전에는 **로그인한 사람의**
+ * `user.accountType`을 봤는데, 그 값이 없는 세션에서는 성인으로 취급돼서
+ * (`auth/accountType.ts`) 아이가 낸 신청이 "학부모"로 표시됐습니다.
+ * 이제 유치원은 CHILD 관계에 CHILD 계정만 넣으므로 이 둘은 어긋나지 않습니다.
  */
-function typeLabel(type: InviteDTO["type"], isChildAccount: boolean): string {
-  if (type === "TEACHER") return "선생님";
-  return isChildAccount ? "아이" : "학부모";
+function typeLabel(invite: InviteDTO): string {
+  if (invite.type === "TEACHER") return "선생님";
+  return invite.accountType === "ADULT" ? "학부모" : "아이";
 }
 
 function RoundButton({
@@ -71,7 +72,6 @@ export function ReceivedInvites({ onAccepted }: { onAccepted?: () => void }) {
   const { user } = useAuth();
   const [invites, setInvites] = useState<InviteDTO[]>([]);
   const [busyId, setBusyId] = useState<number | null>(null);
-  const isChildAccount = isChildAccountOf(user);
 
   const refresh = useCallback(() => {
     if (!user) return;
@@ -132,7 +132,7 @@ export function ReceivedInvites({ onAccepted }: { onAccepted?: () => void }) {
                 </p>
                 <p className="text-xs truncate" style={{ color: "#9CA3AF" }}>
                   {invite.inviterId ? `${invite.inviterId}님이 ` : ""}
-                  {typeLabel(invite.type, isChildAccount)}(으)로 초대했어요
+                  {typeLabel(invite)}(으)로 초대했어요
                 </p>
               </div>
               <RoundButton onClick={() => respond(invite.id, "reject")} disabled={busyId === invite.id} label="거절">
@@ -162,7 +162,14 @@ export function ReceivedInvites({ onAccepted }: { onAccepted?: () => void }) {
                   {invite.kindergartenName || `유치원 #${invite.kindergartenId}`}
                 </p>
                 <p className="text-xs truncate" style={{ color: "#9CA3AF" }}>
-                  {typeLabel(invite.type, isChildAccount)}(으)로 가입을 신청했어요. 원장님의 수락을 기다리고 있어요.
+                  {/*
+                    보호자가 아이를 대신해 낸 신청은 티켓의 주인이 아이입니다. "내가 아이로
+                    신청했어요"라고 쓰면 누구 이야기인지 알 수 없어서 아이 이름을 밝힙니다.
+                  */}
+                  {invite.userId !== user?.id
+                    ? `${invite.userName || invite.userId}을(를) ${typeLabel(invite)}(으)로 가입 신청했어요.`
+                    : `${typeLabel(invite)}(으)로 가입을 신청했어요.`}{" "}
+                  원장님의 수락을 기다리고 있어요.
                 </p>
               </div>
               <RoundButton onClick={() => respond(invite.id, "cancel")} disabled={busyId === invite.id} label="가입 신청 취소">

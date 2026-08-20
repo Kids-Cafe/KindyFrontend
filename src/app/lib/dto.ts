@@ -8,7 +8,16 @@
  * 모든 응답은 `ResultDTO<T>` 봉투에 담겨 오고, 껍데기는 `@/app/lib/api`가 벗깁니다.
  */
 
+/**
+ * 유치원 멤버십의 종류입니다. **학부모는 여기 없습니다** — 학부모는 유치원의 멤버가
+ * 아니라 T_FAMILY로 아이와 이어진 사람이고, 서버가 그 연결을 타고 아이의 유치원을
+ * 함께 내려줍니다. 서버는 `TYPE='CHILD'`는 CHILD 계정, `TYPE='TEACHER'`는 ADULT 계정만
+ * 갖도록 강제하므로, 이 값과 `AccountType`은 언제나 짝이 맞습니다.
+ */
 export type RelationshipType = "CHILD" | "TEACHER";
+
+/** `T_USER.ACCOUNT_TYPE`입니다. 화면 쪽 소문자 표기(`@/app/auth/types`)와는 다릅니다. */
+export type AccountType = "ADULT" | "CHILD";
 
 /** RoleDTO.Permission. 백엔드가 아는 권한은 이 여섯 가지가 전부입니다. */
 export type BackendPermission =
@@ -139,8 +148,20 @@ export interface InviteDTO {
   kindergartenName?: string;
   /** 초대받은(또는 가입 요청한) 사람입니다. */
   userId: string;
-  /** 초대를 보낸 사람입니다. `direction`이 JOIN이면 userId와 같습니다. */
+  /** `userId`의 실명입니다. */
+  userName?: string;
+  /**
+   * `userId`의 계정 유형입니다. `type`만으로는 아이 본인의 신청과 어른의 신청을 구별할 수
+   * 없어서(둘 다 CHILD), 목록이 "아이 · 학부모"라고 뭉뚱그릴 수밖에 없었습니다.
+   */
+  accountType?: AccountType;
+  /**
+   * 티켓을 낸 사람입니다. JOIN이면 보통 신청자 본인이지만, 보호자가 아이를 대신해
+   * 신청했으면 보호자입니다.
+   */
   inviterId?: string;
+  /** `inviterId`의 실명입니다. */
+  inviterName?: string;
   type: RelationshipType;
   roleId?: number;
   direction: InviteDirection;
@@ -259,7 +280,7 @@ export interface PlainUserDTO {
   address?: string;
   addressDetail?: string;
   postcode?: string;
-  accountType?: "ADULT" | "CHILD";
+  accountType?: AccountType;
   birthDate?: string;
   /** 서버 칼럼은 세 값입니다. 화면의 `StudentGender`는 둘뿐이라 UNSPECIFIED는 undefined로 옮깁니다. */
   gender?: "MALE" | "FEMALE" | "UNSPECIFIED";

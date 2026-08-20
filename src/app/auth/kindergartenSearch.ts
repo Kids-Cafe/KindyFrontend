@@ -28,7 +28,19 @@ export async function searchKindergartens(query: string): Promise<KindergartenIn
  *
  * 곧바로 멤버가 되는 게 아니라 대기 중인 가입 요청이 생기고, 원장이 수락해야
  * 관계가 만들어집니다. 그래서 성공했더라도 대시보드에 유치원이 바로 뜨지는 않습니다.
+ *
+ * `forUserId`는 **보호자가 아이를 대신해** 신청할 때 아이의 아이디입니다. 유치원에 다니는
+ * 건 아이지 보호자가 아니라서, 학부모는 반드시 이 경로로 신청해야 합니다. 비워 두면
+ * 본인 신청이고(선생님이 그렇습니다), 서버가 T_FAMILY로 보호자 여부를 확인합니다.
  */
-export async function requestJoinKindergarten(kindergartenId: number, type: "CHILD" | "TEACHER"): Promise<void> {
-  await apiPost("/api/kindergarten/join", { id: kindergartenId, type });
+export async function requestJoinKindergarten(
+  kindergartenId: number,
+  type: "CHILD" | "TEACHER",
+  forUserId?: string,
+): Promise<void> {
+  await apiPost("/api/kindergarten/join", {
+    id: kindergartenId,
+    type,
+    ...(forUserId ? { userId: forUserId } : {}),
+  });
 }

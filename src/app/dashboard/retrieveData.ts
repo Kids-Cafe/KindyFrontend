@@ -74,10 +74,12 @@ export function resolveDashboardRole(user: AuthUser): DashboardData["role"] {
  * 자기 유치원에서는 원장이면서 다른 유치원에는 학부모로 등록돼 있을 수 있습니다.
  */
 export function roleFromRelationship(relationship: RelationshipDTO, isOwner: boolean, user: AuthUser): DashboardData["role"] {
-  if (relationship.type === "CHILD") {
-    // 유치원과 CHILD로 이어진 쪽이 아이 본인인지, 아이를 등록한 학부모인지 구분합니다.
-    return user.accountType === "child" ? "child" : "parent";
-  }
+  // 학부모는 유치원의 멤버가 아닙니다. 서버가 T_FAMILY를 타고 "우리 아이가 다니는 유치원"을
+  // 함께 내려주기 때문에, 내 것이 아닌 관계 행이 곧 학부모라는 뜻입니다.
+  // 계정 유형(accountType)으로 판정하지 않는 이유는 그 값이 예전 세션에는 없어서
+  // undefined일 때 성인으로 취급돼(auth/accountType.ts) 아이가 학부모로 보이기 때문입니다.
+  if (relationship.userId !== user.id) return "parent";
+  if (relationship.type === "CHILD") return "child";
   return isOwner ? "director" : "teacher";
 }
 
@@ -167,6 +169,12 @@ export interface MemberSnapshot {
   classChildren: ChildRecord[];
   /** 로그인한 사람이 이 유치원에서 앉는 "교사 자리"입니다. */
   teacher: TeacherRecord;
+  /**
+   * 지금 보고 있는 아이의 담임입니다. 담임이 정해지지 않았으면 undefined입니다.
+   * `teacher`와 달리 **본인으로 되돌아가지 않습니다** — 학부모 화면이 `teacher`를 쓰면
+   * 담임이 없을 때 자기 자신이 "담임 선생님"으로 표시됩니다.
+   */
+  homeroomTeacher?: TeacherRecord;
   me?: ChildRecord;
   /** 화면이 기준으로 삼는 아이입니다. 여럿이면 `myChildren[0]`과 같습니다. */
   myChild?: ChildRecord;
@@ -188,6 +196,8 @@ export function buildMemberSnapshot(
   classes: ClassRecord[],
   relationships: RelationshipDTO[],
   families: FamilyDTO[],
+  /** 학부모가 아이 여럿을 뒀을 때 지금 보고 있는 아이입니다. 없으면 첫째를 봅니다. */
+  selectedChildId?: string,
 ): MemberSnapshot {
   const teachers = toTeacherRecords(relationships, classes, kindergarten);
 
@@ -210,21 +220,23 @@ export function buildMemberSnapshot(
   }
 
   const me = role === "child" ? classChildren.find((c) => c.id === user.id) : undefined;
-  // 한 부모에게 아이가 여럿일 수 있습니다. 첫째만 잡으면 둘째의 리포트·알림장이 아예
-  // 로드되지 않아서, 목록을 만들고 `myChild`는 그 첫 번째로 둡니다 — 기존 화면 15곳이
-  // 단수 필드를 읽고 있어 필드를 없애지 않고 덧붙입니다.
+  // 한 부모에게 아이가 여럿일 수 있습니다. `myChild`는 화면 15곳이 읽는 단수 필드라
+  // 없애지 않고, 고른 아이(없으면 첫째)를 가리키게 둡니다 — 화면들은 그대로 두고
+  // 선택만 바꾸면 따라옵니다.
   const myChildren = role === "parent" ? classChildren.filter((c) => childIdsOfUser.has(c.id)) : undefined;
-  const myChild = myChildren?.[0];
+  const myChild = myChildren?.find((c) => c.id === selectedChildId) ?? myChildren?.[0];
 
   // 로그인한 본인이 교사/원장이면 자기 멤버십이 곧 "교사 자리"입니다.
   // 학부모·아이 화면에서는 우리 반 담임이 그 자리에 앉습니다.
   const ownMembership = teachers.find((t) => t.id === user.id);
   const viewerClassId = me?.classId ?? myChild?.classId;
-  const classTeacher = viewerClassId !== undefined ? teachers.find((t) => t.classId === viewerClassId) : undefined;
+  const homeroomTeacher = viewerClassId !== undefined ? teachers.find((t) => t.classId === viewerClassId) : undefined;
 
+  // 마지막 갈래는 "이 사람 자신"입니다. 아직 아무 자리도 없을 때 화면이 비지 않게 하는
+  // 자리채움이라 담임 표시에 쓰면 안 됩니다 — 그건 homeroomTeacher가 맡습니다.
   const teacher: TeacherRecord =
     ownMembership ??
-    classTeacher ?? {
+    homeroomTeacher ?? {
       id: user.id,
       name: myDisplayName,
       className: "유치원 소속",
@@ -238,6 +250,7 @@ export function buildMemberSnapshot(
     teachers,
     classChildren,
     teacher,
+    homeroomTeacher,
     myNickname,
     me,
     myChild,

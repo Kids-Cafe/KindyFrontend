@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ShieldCheck, Plus, Trash2, Search, Mail, X, Check, UserPlus } from "lucide-react";
 import { useDashboardStore } from "@/app/dashboard/DashboardStoreContext";
 import { useAuth } from "@/app/auth/AuthContext";
@@ -33,8 +33,15 @@ const STATUS_COLOR: Record<InviteStatus, { bg: string; fg: string }> = {
   rejected: { bg: "rgba(248,113,113,0.15)", fg: "#DC2626" },
 };
 
-/** 초대장이 만들려는 관계입니다. 서버 타입은 CHILD/TEACHER 둘뿐입니다. */
-const TYPE_LABEL: Record<InviteDTO["type"], string> = { TEACHER: "선생님", CHILD: "아이 · 학부모" };
+/**
+ * 초대장이 만들려는 관계입니다. 서버 타입은 CHILD/TEACHER 둘뿐이라 예전에는 CHILD를
+ * "아이 · 학부모"로 뭉뚱그릴 수밖에 없었습니다. 이제 티켓이 대상의 계정 유형을 함께
+ * 싣고 오고, 유치원의 CHILD 관계에는 CHILD 계정만 들어갈 수 있으므로 갈라 쓸 수 있습니다.
+ */
+function typeLabel(invite: InviteDTO): string {
+  if (invite.type === "TEACHER") return "선생님";
+  return invite.accountType === "ADULT" ? "학부모" : "아이";
+}
 
 function formatDate(ms: number): string {
   const d = new Date(ms);
@@ -69,10 +76,6 @@ export function MemberManageFeature() {
   // 유치원에 걸려 있는 대기 중인 초대장 전부입니다(우리가 보낸 것 + 받은 가입 신청).
   const [invites, setInvites] = useState<InviteDTO[]>([]);
   const [respondingId, setRespondingId] = useState<number | null>(null);
-  // 초대 대상의 이름입니다. `invite/list`는 아이디만 내려주므로 `user/search`로 채웁니다.
-  const [nameById, setNameById] = useState<Record<string, { name: string; loginId: string }>>({});
-  // 한 번 찾아본 아이디는 (못 찾았더라도) 다시 조회하지 않습니다.
-  const nameLookupTried = useRef<Set<string>>(new Set());
 
   function refreshInvites() {
     fetchSentInvites(data.kindergarten.id).then(setInvites).catch(() => {});
@@ -89,39 +92,6 @@ export function MemberManageFeature() {
     [invites],
   );
 
-  /**
-   * 초대장에 이름이 담기지 않아(아이디만 옵니다) 목록에 낯선 아이디가 그대로 보였습니다.
-   * 모르는 아이디만 골라 `user/search`로 한 번씩 찾아 이름을 채웁니다.
-   */
-  useEffect(() => {
-    const unknown = [
-      ...new Set(
-        invites
-          .map((i) => i.userId)
-          .filter((id) => id && id.trim().length >= 2 && !(id in nameById) && !nameLookupTried.current.has(id)),
-      ),
-    ];
-    if (unknown.length === 0) return;
-    unknown.forEach((id) => nameLookupTried.current.add(id));
-
-    let cancelled = false;
-    void Promise.all(
-      unknown.map(async (id) => {
-        // 부분 일치 검색이라 정확히 같은 아이디만 인정합니다.
-        const found = await searchUsers(id).catch(() => []);
-        const exact = found.find((u) => u.id === id);
-        return exact ? ([id, { name: exact.name, loginId: exact.id }] as const) : null;
-      }),
-    ).then((pairs) => {
-      const resolved = pairs.filter((p): p is [string, { name: string; loginId: string }] => p !== null);
-      if (cancelled || resolved.length === 0) return;
-      setNameById((prev) => ({ ...prev, ...Object.fromEntries(resolved) }));
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [invites, nameById]);
 
   const pendingInviteIds = useMemo(
     () => new Set(sentInvites.filter((i) => STATUS_MAP[i.status] === "pending").map((i) => i.userId)),
@@ -146,12 +116,9 @@ export function MemberManageFeature() {
     setSearchError(null);
     try {
       const found = await searchUsers(query);
-      const filtered = found.filter((r) => r.accountType !== "CHILD" && r.id !== user?.id);
-      setResults(filtered);
-      setNameById((prev) => ({
-        ...prev,
-        ...Object.fromEntries(filtered.map((r) => [r.id, { name: r.name, loginId: r.id }])),
-      }));
+      // 여기서 보내는 건 교사 초대라 아이 계정은 뺍니다(서버도 CHILD 계정에 TEACHER
+      // 관계를 만들지 않습니다).
+      setResults(found.filter((r) => r.accountType !== "CHILD" && r.id !== user?.id));
     } catch {
       setResults([]);
       setSearchError("계정을 찾지 못했어요. 잠시 후 다시 시도해주세요.");
@@ -366,8 +333,10 @@ export function MemberManageFeature() {
             </p>
             <div className="space-y-2">
               {joinRequests.map((invite) => {
-                const known = nameById[invite.userId];
                 const busy = respondingId === invite.id;
+                // 아이는 스스로 신청하지 못하므로 보호자가 대신 냅니다. 누가 냈는지 밝혀야
+                // 원장이 "이 아이를 아는 어른이 넣은 신청"인지 확인할 수 있습니다.
+                const filedByGuardian = invite.inviterId && invite.inviterId !== invite.userId;
                 return (
                   <div
                     key={invite.id}
@@ -376,10 +345,11 @@ export function MemberManageFeature() {
                   >
                     <div className="min-w-0">
                       <p className="text-xs font-bold truncate" style={{ color: "#3B1355" }}>
-                        {known?.name ?? invite.userId} {known && <span className="font-normal" style={{ color: "#A06080" }}>· {known.loginId}</span>}
+                        {invite.userName ?? invite.userId} <span className="font-normal" style={{ color: "#A06080" }}>· {invite.userId}</span>
                       </p>
                       <p className="text-[11px]" style={{ color: "#A06080" }}>
-                        {TYPE_LABEL[invite.type]}(으)로 신청 · {formatDate(invite.createdAt)}
+                        {typeLabel(invite)}(으)로 신청 · {formatDate(invite.createdAt)}
+                        {filedByGuardian && ` · ${invite.inviterName ?? invite.inviterId} 보호자가 신청`}
                       </p>
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
@@ -413,15 +383,14 @@ export function MemberManageFeature() {
             <div className="space-y-2">
               {sentInvites.map((invite) => {
                 const status = STATUS_MAP[invite.status];
-                const known = nameById[invite.userId];
                 return (
                   <div key={invite.id} className="flex items-center justify-between gap-2 rounded-xl px-3.5 py-2.5" style={{ background: "#FAFAFA", border: "1px solid #F3F4F6" }}>
                     <div className="min-w-0">
                       <p className="text-xs font-bold truncate" style={{ color: "#3B1355" }}>
-                        {known?.name ?? invite.userId} {known && <span className="font-normal" style={{ color: "#A06080" }}>· {known.loginId}</span>}
+                        {invite.userName ?? invite.userId} <span className="font-normal" style={{ color: "#A06080" }}>· {invite.userId}</span>
                       </p>
                       <p className="text-[11px]" style={{ color: "#A06080" }}>
-                        {TYPE_LABEL[invite.type]}(으)로 초대 · {formatDate(invite.createdAt)}
+                        {typeLabel(invite)}(으)로 초대 · {formatDate(invite.createdAt)}
                       </p>
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">

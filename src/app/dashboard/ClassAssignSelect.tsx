@@ -5,8 +5,9 @@ import { canManageKindergartenWide } from "@/app/dashboard/classAccess";
 /**
  * 멤버(아이·교사)를 반에 배정하거나 해제하는 선택기입니다.
  *
- * 반 편성은 반 관리에 딸린 권한이라 서버가 MANAGE_CLASS로 검사합니다. 여기서도 같은
- * 기준으로 판단해, 권한이 없으면 선택기 대신 지금 반 이름만 보여줍니다
+ * 누가 어느 반에 앉는지는 **멤버**에 관한 결정이라 서버가 MANAGE_CLASS가 아니라
+ * MANAGE_MEMBER로 검사합니다(MANAGE_CLASS는 반 자체를 만들고 이름을 바꾸고 지우는 권한).
+ * 여기서도 같은 기준으로 판단해, 권한이 없으면 선택기 대신 지금 반 이름만 보여줍니다
  * (화면을 감추는 건 편의일 뿐이고, 실제 차단은 서버가 합니다).
  */
 export function ClassAssignSelect({ userId, classId }: { userId: string; classId: number | undefined }) {
@@ -14,7 +15,7 @@ export function ClassAssignSelect({ userId, classId }: { userId: string; classId
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const canAssign = canManageKindergartenWide(data, "manageClasses");
+  const canAssign = canManageKindergartenWide(data, "manageMembers");
   const currentName = data.classes.find((c) => c.id === classId)?.name;
 
   if (!canAssign) {
