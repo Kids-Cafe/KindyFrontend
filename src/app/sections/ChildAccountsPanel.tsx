@@ -3,6 +3,7 @@ import { Baby, Plus, Link2, Trash2, Search } from "lucide-react";
 import { useAuth } from "@/app/auth/AuthContext";
 import { isPasswordValid, isValidBirthDate, isValidLoginId, isValidPhone } from "@/app/auth/validation";
 import { apiGet, ApiError } from "@/app/lib/api";
+import { withJosa } from "@/app/lib/korean";
 import { avatarFor } from "@/app/dashboard/retrieveData";
 import {
   createChildAccount,
@@ -264,7 +265,7 @@ export function ChildAccountsPanel({
 
   async function handleUnlink(child: PlainUserDTO) {
     const warning =
-      `${child.name}와의 연결을 해제할까요?\n\n` +
+      `${withJosa(child.name, "과/와")}의 연결을 해제할까요?\n\n` +
       "해제하면 이 아이의 일기 · 알림장 · 성장 리포트를 더 이상 볼 수 없어요.";
     if (!window.confirm(warning)) return;
 

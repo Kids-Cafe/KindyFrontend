@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Users, Check, X, Clock } from "lucide-react";
 import { useAuth } from "@/app/auth/AuthContext";
 import { fetchFamilyInvites, respondToFamilyInvite } from "@/app/dashboard/userSync";
+import { withJosa } from "@/app/lib/korean";
 import type { FamilyInviteDTO } from "@/app/lib/dto";
 
 /**
@@ -51,7 +52,7 @@ function describe(invite: FamilyInviteDTO, viewerId: string): string {
   if (invite.child === viewerId) return `${parent}님이 보호자로 등록하려고 해요`;
   if (invite.parent === viewerId) {
     return invite.requesterId === invite.child
-      ? `${child}이(가) 나를 보호자로 등록해 달라고 했어요`
+      ? `${withJosa(child, "이/가")} 나를 보호자로 등록해 달라고 했어요`
       : `${requester}님이 나를 ${child}의 보호자로 등록하려고 해요`;
   }
   return `${child}의 보호자로 ${parent}님을 추가하려고 해요`;
@@ -61,7 +62,7 @@ function describe(invite: FamilyInviteDTO, viewerId: string): string {
 function describeOwn(invite: FamilyInviteDTO, viewerId: string): string {
   const parent = invite.parentName ?? invite.parent;
   const child = invite.childName ?? invite.child;
-  if (invite.parent === viewerId) return `${child}과(와)의 연결을 요청했어요`;
+  if (invite.parent === viewerId) return `${withJosa(child, "과/와")}의 연결을 요청했어요`;
   if (invite.child === viewerId) return `${parent}님을 보호자로 요청했어요`;
   return `${child}의 보호자로 ${parent}님을 요청했어요`;
 }

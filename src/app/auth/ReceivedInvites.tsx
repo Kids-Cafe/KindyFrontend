@@ -8,6 +8,7 @@ import {
   rejectInviteOnServer,
 } from "@/app/dashboard/backendSync";
 import { FamilyInvites } from "@/app/auth/FamilyInvites";
+import { withJosa } from "@/app/lib/korean";
 import type { InviteDTO } from "@/app/lib/dto";
 
 /**
@@ -132,7 +133,7 @@ export function ReceivedInvites({ onAccepted }: { onAccepted?: () => void }) {
                 </p>
                 <p className="text-xs truncate" style={{ color: "#9CA3AF" }}>
                   {invite.inviterId ? `${invite.inviterId}님이 ` : ""}
-                  {typeLabel(invite)}(으)로 초대했어요
+                  {withJosa(typeLabel(invite), "으로/로")} 초대했어요
                 </p>
               </div>
               <RoundButton onClick={() => respond(invite.id, "reject")} disabled={busyId === invite.id} label="거절">
@@ -167,8 +168,8 @@ export function ReceivedInvites({ onAccepted }: { onAccepted?: () => void }) {
                     신청했어요"라고 쓰면 누구 이야기인지 알 수 없어서 아이 이름을 밝힙니다.
                   */}
                   {invite.userId !== user?.id
-                    ? `${invite.userName || invite.userId}을(를) ${typeLabel(invite)}(으)로 가입 신청했어요.`
-                    : `${typeLabel(invite)}(으)로 가입을 신청했어요.`}{" "}
+                    ? `${withJosa(invite.userName || invite.userId, "을/를")} ${withJosa(typeLabel(invite), "으로/로")} 가입 신청했어요.`
+                    : `${withJosa(typeLabel(invite), "으로/로")} 가입을 신청했어요.`}{" "}
                   원장님의 수락을 기다리고 있어요.
                 </p>
               </div>

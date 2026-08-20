@@ -14,6 +14,7 @@ import { ProviderIcon } from "@/app/auth/ProviderIcon";
 import { UserAvatar } from "@/app/auth/UserAvatar";
 import { useDisplayName } from "@/app/auth/useDisplayName";
 import { openAddressSearch } from "@/app/auth/addressSearch";
+import { withJosa } from "@/app/lib/korean";
 import { useDashboardStoreOptional } from "@/app/dashboard/DashboardStoreContext";
 import { useChildVoiceSettings } from "@/app/dashboard/childVoiceSettings";
 import { useMyFamily, type MyFamily } from "@/app/dashboard/useMyFamily";
@@ -289,7 +290,7 @@ function MyPagePanel({
                     {/* 학부모에게 내려오는 건 아이의 소속입니다. 그걸 "내 소속"으로 적으면
                         학부모가 유치원의 멤버인 것처럼 읽힙니다. */}
                     {kg.viaChild
-                      ? `${childNameById.get(kg.memberId) ?? kg.memberId}이(가) 다니고 있어요`
+                      ? `${withJosa(childNameById.get(kg.memberId) ?? kg.memberId, "이/가")} 다니고 있어요`
                       : kg.nickname
                         ? `별칭 ${kg.nickname}`
                         : "내 소속"}
@@ -393,7 +394,7 @@ function MyPagePanel({
                       // 만든 사람이 곧 소유자라 가입 요청 없이 바로 원장이 됩니다.
                       await updateProfile({ role: "teacher", teacherRole: "director", kindergarten });
                       onMembershipsChanged?.();
-                      onDone(`${kindergarten.name}을(를) 등록했어요. 이제 원장으로 관리할 수 있어요.`);
+                      onDone(`${withJosa(kindergarten.name, "을/를")} 등록했어요. 이제 원장으로 관리할 수 있어요.`);
                     }}
                   />
                   <button

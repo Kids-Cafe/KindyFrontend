@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Sparkles, RefreshCw, ExternalLink } from "lucide-react";
 import { useDashboardStore } from "@/app/dashboard/DashboardStoreContext";
+import { withJosa } from "@/app/lib/korean";
 
 interface Recommendation {
   id: string;
@@ -45,7 +46,7 @@ export function RecommendationsFeature() {
       <div className="flex items-center justify-between mb-1.5">
         <div className="flex items-center gap-2 text-xs font-bold" style={{ color: "#E879A0" }}>
           <Sparkles className="w-3.5 h-3.5" />
-          {data.myChild?.nickname ?? "우리 아이"}를 위한 AI 추천자료
+          {withJosa(data.myChild?.nickname ?? "우리 아이", "을/를")} 위한 AI 추천자료
         </div>
         <button onClick={refresh} className="flex items-center gap-1 text-xs font-bold px-2.5 py-1.5 rounded-full transition-colors hover:bg-black/[0.04]" style={{ color: "#A06080" }}>
           <RefreshCw className="w-3.5 h-3.5" /> 새로고침

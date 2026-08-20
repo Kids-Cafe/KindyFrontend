@@ -14,6 +14,7 @@ import type { InviteDTO, PlainUserDTO } from "@/app/lib/dto";
 import { PERMISSION_LABELS } from "@/app/dashboard/types";
 import type { PermissionKey } from "@/app/dashboard/types";
 import { useConfirm } from "@/app/components/ConfirmDialog";
+import { withJosa } from "@/app/lib/korean";
 
 const ALL_PERMISSIONS = Object.keys(PERMISSION_LABELS) as PermissionKey[];
 const ROLE_COLORS = ["#E879A0", "#60A5FA", "#86EFAC", "#F9D56E", "#C084FC"];
@@ -371,7 +372,7 @@ export function MemberManageFeature() {
                         {invite.userName ?? invite.userId} <span className="font-normal" style={{ color: "#A06080" }}>· {invite.userId}</span>
                       </p>
                       <p className="text-[11px]" style={{ color: "#A06080" }}>
-                        {typeLabel(invite)}(으)로 신청 · {formatDate(invite.createdAt)}
+                        {withJosa(typeLabel(invite), "으로/로")} 신청 · {formatDate(invite.createdAt)}
                         {filedByGuardian && ` · ${invite.inviterName ?? invite.inviterId} 보호자가 신청`}
                       </p>
                     </div>
@@ -413,7 +414,7 @@ export function MemberManageFeature() {
                         {invite.userName ?? invite.userId} <span className="font-normal" style={{ color: "#A06080" }}>· {invite.userId}</span>
                       </p>
                       <p className="text-[11px]" style={{ color: "#A06080" }}>
-                        {typeLabel(invite)}(으)로 초대 · {formatDate(invite.createdAt)}
+                        {withJosa(typeLabel(invite), "으로/로")} 초대 · {formatDate(invite.createdAt)}
                       </p>
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
