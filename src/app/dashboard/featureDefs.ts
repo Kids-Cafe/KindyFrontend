@@ -13,7 +13,8 @@ import {
   CalendarDays,
   Images,
 } from "lucide-react";
-import type { DashboardRole, FeatureDef } from "@/app/dashboard/types";
+import { teacherHasPermission } from "@/app/dashboard/classAccess";
+import type { DashboardData, DashboardRole, FeatureDef, PermissionKey } from "@/app/dashboard/types";
 
 /** 역할별 좌측 기능목록입니다. 디스코드의 "텍스트 채널 목록" 자리를 대체합니다. */
 export const FEATURES_BY_ROLE: Record<DashboardRole, FeatureDef[]> = {
@@ -53,6 +54,43 @@ export const FEATURES_BY_ROLE: Record<DashboardRole, FeatureDef[]> = {
     { id: "photos", label: "사진첩", hint: "우리 유치원 사진첩", icon: Images },
   ],
 };
+
+/**
+ * 권한을 받아야만 열리는 관리 기능들입니다. 원장에게는 처음부터 붙어 있고
+ * (`FEATURES_BY_ROLE.director`), 선생님에게는 해당 권한이 있는 역할을 배정받았을 때만 붙습니다.
+ */
+const PERMISSION_FEATURES: { permission: PermissionKey; feature: FeatureDef }[] = [
+  { permission: "manageNotices", feature: { id: "notices", label: "공지사항 관리", hint: "유치원 공지 작성/고정", icon: Megaphone } },
+  { permission: "manageClasses", feature: { id: "classes", label: "반 관리", hint: "반 생성 · 수정 · 삭제", icon: School } },
+  { permission: "manageMembers", feature: { id: "members", label: "멤버 관리", hint: "선생님 계정 · 권한 설정", icon: ShieldCheck } },
+];
+
+/**
+ * 이 사람이 지금 유치원에서 실제로 열 수 있는 기능 목록입니다.
+ *
+ * 역할별 고정 목록(`FEATURES_BY_ROLE`)만 쓰던 시절에는 원장이 MANAGE_CLASS·MANAGE_MEMBER를
+ * 쥐여 준 선생님도 **사이드바에 그 항목이 아예 없어** 반이나 멤버를 만질 방법이 없었습니다.
+ * 서버는 처음부터 권한으로 판정하고 있었으니, 화면만 따라가지 못한 셈입니다.
+ */
+export function featuresFor(data: DashboardData): FeatureDef[] {
+  const base = FEATURES_BY_ROLE[data.role];
+  if (data.role !== "teacher") return base;
+
+  const granted = PERMISSION_FEATURES.filter(({ permission }) => teacherHasPermission(data, permission)).map(
+    ({ feature }) => feature,
+  );
+  if (granted.length === 0) return base;
+
+  // 관리 기능은 "홈" 바로 다음에 모아 둡니다(원장 화면과 같은 순서).
+  const homeIndex = base.findIndex((f) => f.id === "home");
+  const at = homeIndex >= 0 ? homeIndex + 1 : 0;
+  return [...base.slice(0, at), ...granted, ...base.slice(at)];
+}
+
+/** 화면 하나를 열 자격이 있는지. 사이드바에 없는 항목을 다른 경로로 여는 걸 막습니다. */
+export function canOpenFeature(data: DashboardData, id: FeatureDef["id"]): boolean {
+  return featuresFor(data).some((f) => f.id === id);
+}
 
 /** 역할별 처음 열리는 기본 기능입니다. 아이는 파트너를 아직 안 골랐으면 선택 화면부터 봅니다. */
 export function getDefaultFeature(role: DashboardRole, hasPartner: boolean): FeatureDef["id"] {

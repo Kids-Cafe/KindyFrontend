@@ -52,10 +52,22 @@ export interface RoleDef {
 }
 
 /**
+ * 아이 한 명의 보호자입니다. `user/family/parents`가 내려주는 값 그대로입니다.
+ *
+ * 보호자는 유치원의 멤버가 아니라 `T_FAMILY`를 타고 붙는 사람이라, 관계 목록에는
+ * 이름이 없습니다. 전화번호는 서버가 교사에게만 열어 주는 연락처입니다(없을 수 있습니다).
+ */
+export interface ParentRef {
+  id: string;
+  name: string;
+  phone?: string;
+}
+
+/**
  * 유치원에 등록된 아이 한 명입니다. 서버의 `RelationshipDTO`(type=CHILD)에서 만들어집니다.
  *
  * 관계 응답에 없는 값은 선택 필드입니다 — 나이·성별은 아이 계정의 프로필에만 있고
- * (`user/info`는 본인 것만 내려줍니다), 부모는 `user/family/list`로 따로 이어 붙입니다.
+ * (`user/info`는 본인 것만 내려줍니다), 보호자는 `user/family/parents`로 따로 이어 붙입니다.
  * 아바타는 표시용이라 서버에 저장하지 않고 아이디에서 결정적으로 만들어 씁니다.
  */
 export interface ChildRecord {
@@ -70,18 +82,16 @@ export interface ChildRecord {
   className: string;
   kindergartenId: number;
   kindergartenName: string;
-  parentId?: string;
-  parentName?: string;
+  /**
+   * 이 아이의 보호자 전부입니다. `T_FAMILY`는 처음부터 다대다라 한 명으로 단정할 수 없습니다 —
+   * 예전에는 단수 `parentId`/`parentName`이라 아빠·엄마 중 한쪽이 조용히 사라졌습니다.
+   * 아직 못 받아 왔거나 연결된 보호자가 없으면 빈 배열입니다.
+   */
+  parents: ParentRef[];
   teacherId?: string;
   aiPartner: AIPartnerId | null;
   avatarEmoji: string;
   avatarColor: string;
-}
-
-export interface ParentRecord {
-  id: string;
-  name: string;
-  childId: string;
 }
 
 export interface TeacherRecord {
@@ -176,7 +186,10 @@ export interface ChatMessage {
   time: number;
 }
 
-/** 부모 ↔ 선생님 채팅 스레드입니다. 아이 1명당 1개입니다. */
+/**
+ * 부모 ↔ 선생님 채팅 스레드입니다. **아이 1명당이 아니라 보호자 1명당 1개**입니다 —
+ * 서버 대화는 두 사람 사이의 것이라, 보호자가 둘이면 담임과의 대화도 둘입니다.
+ */
 export interface ChatThread {
   id: number;
   childId: string;
@@ -344,7 +357,8 @@ export interface DashboardData {
   classChildren: ChildRecord[];
   diaryByChild: Record<string, DiaryEntry[]>;
   reportsByChild: Record<string, ChildReports>;
-  threadsByChild: Record<string, ChatThread>;
+  /** 아이 id → 그 아이의 보호자들과 담임 사이의 대화입니다. 보호자 수만큼 들어 있습니다. */
+  threadsByChild: Record<string, ChatThread[]>;
   aiThreadsByChild: Record<string, AiChatThread>;
   /** 원장 ↔ 교사 대화 스레드입니다. 교사 id로 조회합니다. */
   memberThreadsByTeacher: Record<string, MemberChatThread>;

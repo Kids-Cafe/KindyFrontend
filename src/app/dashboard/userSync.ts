@@ -195,6 +195,26 @@ export async function fetchFamilies(): Promise<FamilyDTO[]> {
 }
 
 /**
+ * 아이 한 명의 **보호자 전부**입니다. `family/list`가 로그인한 본인의 행만 돌려주는 것과
+ * 달리, 이건 아이를 기준으로 조회하므로 교사·원장도 자기 반 아이의 보호자를 알 수 있습니다.
+ * 서버는 `canViewChild`(본인·보호자·그 아이가 다니는 유치원의 교사)로 막습니다.
+ */
+export async function fetchChildGuardians(childId: string): Promise<PlainUserDTO[]> {
+  return apiGet<PlainUserDTO[]>("/api/user/family/parents", { childId });
+}
+
+/**
+ * 여러 아이의 보호자를 한 번에 채웁니다. 서버에 묶음 조회가 없어 아이 수만큼 나갑니다.
+ * 개별 실패는 삼킵니다 — 볼 수 없는 아이가 섞여 있어도 나머지는 이름이 나와야 합니다.
+ */
+export async function fetchGuardiansOf(childIds: string[]): Promise<Record<string, PlainUserDTO[]>> {
+  const entries = await Promise.all(
+    childIds.map(async (id) => [id, await fetchChildGuardians(id).catch(() => [])] as const),
+  );
+  return Object.fromEntries(entries);
+}
+
+/**
  * 연결을 끊습니다. 만드는 것과 달리 한쪽이 혼자 할 수 있습니다 — 행을 지우는 건 권한을
  * 줄이기만 해서 상대가 동의할 대상이 없기 때문입니다. 마지막 보호자가 자신을 끊는 것도
  * 서버는 막지 않으니, 그 경고는 화면이 합니다.

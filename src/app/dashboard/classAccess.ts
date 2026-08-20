@@ -29,6 +29,17 @@ export function teacherHasPermission(data: DashboardData, permission: Permission
 }
 
 /**
+ * 유치원 명단 전체(반별 + 반 미배정)를 보고 손댈 수 있는 사람인지 판정합니다.
+ *
+ * 원장은 언제나 해당하고, 선생님은 멤버나 반을 관리할 권한을 받았을 때 해당합니다.
+ * 우측 멤버 사이드바가 무엇을 그릴지, 학생을 눌렀을 때 어떤 패널이 뜰지가 이 값으로 갈립니다.
+ */
+export function canManageRoster(data: DashboardData): boolean {
+  if (data.role === "director") return true;
+  return teacherHasPermission(data, "manageMembers") || teacherHasPermission(data, "manageClasses");
+}
+
+/**
  * 해당 반의 콘텐츠를 등록·수정·삭제할 수 있는지 판정합니다.
  *
  * - 원장: 모든 반

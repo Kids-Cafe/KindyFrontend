@@ -11,8 +11,10 @@ import { MemberSidebar } from "@/app/dashboard/MemberSidebar";
 import { StudentInfoDialog } from "@/app/dashboard/StudentInfoDialog";
 import { DirectorStudentPanel } from "@/app/dashboard/DirectorStudentPanel";
 import { MemberProfilePanel } from "@/app/dashboard/MemberProfilePanel";
-import { FEATURES_BY_ROLE, getDefaultFeature } from "@/app/dashboard/featureDefs";
+import { canOpenFeature, featuresFor, getDefaultFeature } from "@/app/dashboard/featureDefs";
+import { canManageRoster } from "@/app/dashboard/classAccess";
 import type { FeatureId } from "@/app/dashboard/types";
+import type { ChatTarget } from "@/app/dashboard/features/TeacherChatFeature";
 import { PartnerSelect } from "@/app/dashboard/features/PartnerSelect";
 import { AiChatFeature } from "@/app/dashboard/features/AiChatFeature";
 import { VoiceChatFeature } from "@/app/dashboard/features/VoiceChatFeature";
@@ -35,7 +37,9 @@ import { RecommendationsFeature } from "@/app/dashboard/features/Recommendations
 function DashboardBody({ onMembershipsChanged }: { onMembershipsChanged: () => void }) {
   const { user } = useAuth();
   const { data, workspaces, activeWorkspaceId, switchWorkspace, selectChild } = useDashboardStore();
-  const features = FEATURES_BY_ROLE[data.role];
+  // 역할뿐 아니라 배정된 권한까지 반영합니다 — 원장이 반/멤버 관리 권한을 준 선생님은
+  // 그 항목이 사이드바에 함께 뜹니다.
+  const features = useMemo(() => featuresFor(data), [data]);
 
   const [activeFeature, setActiveFeature] = useState<FeatureId>(() =>
     getDefaultFeature(data.role, Boolean(data.me?.aiPartner)),
@@ -45,7 +49,8 @@ function DashboardBody({ onMembershipsChanged }: { onMembershipsChanged: () => v
   const [showMyPage, setShowMyPage] = useState(false);
   const [openStudentId, setOpenStudentId] = useState<string | null>(null);
   const [openTeacherId, setOpenTeacherId] = useState<string | null>(null);
-  const [chatTargetChildId, setChatTargetChildId] = useState<string | null>(null);
+  // 대화 상대는 아이가 아니라 그 아이의 보호자 한 명입니다(보호자가 둘일 수 있습니다).
+  const [chatTarget, setChatTarget] = useState<ChatTarget | null>(null);
 
   // 좌측 서버 레일에서 다른 유치원 워크스페이스로 옮겨가면, 그 유치원 역할에 맞는
   // 기본 화면으로 돌아가고 이전 워크스페이스에서 열려 있던 패널들은 닫아 둡니다.
@@ -53,7 +58,7 @@ function DashboardBody({ onMembershipsChanged }: { onMembershipsChanged: () => v
     setActiveFeature(getDefaultFeature(data.role, Boolean(data.me?.aiPartner)));
     setOpenStudentId(null);
     setOpenTeacherId(null);
-    setChatTargetChildId(null);
+    setChatTarget(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeWorkspaceId]);
 
@@ -64,9 +69,9 @@ function DashboardBody({ onMembershipsChanged }: { onMembershipsChanged: () => v
     return `${data.teacher.className} 담임`;
   }, [data]);
 
-  function openStudentChat(childId: string) {
+  function openStudentChat(target: ChatTarget) {
     setOpenStudentId(null);
-    setChatTargetChildId(childId);
+    setChatTarget(target);
     setActiveFeature("teacher-chat");
   }
 
@@ -234,18 +239,18 @@ function DashboardBody({ onMembershipsChanged }: { onMembershipsChanged: () => v
             <>
               {activeFeature === "reports" && <ReportsFeature />}
               {activeFeature === "teacher-chat" && (
-                <TeacherChatFeature targetChildId={chatTargetChildId} onSelectChild={setChatTargetChildId} />
+                <TeacherChatFeature target={chatTarget} onSelectTarget={setChatTarget} />
               )}
             </>
           )}
 
-          {data.role === "director" && (
-            <>
-              {activeFeature === "notices" && <NoticeManageFeature />}
-              {activeFeature === "classes" && <ClassManageFeature />}
-              {activeFeature === "members" && <MemberManageFeature />}
-            </>
-          )}
+          {/*
+            원장 전용이 아니라 **권한이 있는 사람 전용**입니다. `canOpenFeature`가 사이드바를
+            만드는 것과 같은 판정을 쓰므로, 목록에 없는 화면은 여기서도 열리지 않습니다.
+          */}
+          {activeFeature === "notices" && canOpenFeature(data, "notices") && <NoticeManageFeature />}
+          {activeFeature === "classes" && canOpenFeature(data, "classes") && <ClassManageFeature />}
+          {activeFeature === "members" && canOpenFeature(data, "members") && <MemberManageFeature />}
 
           {activeFeature === "supplies" && <SuppliesFeature />}
           {activeFeature === "schedule" && <ScheduleFeature />}
@@ -262,7 +267,11 @@ function DashboardBody({ onMembershipsChanged }: { onMembershipsChanged: () => v
         </div>
       </div>
 
-      {data.role === "director" ? (
+      {/*
+        반 배정이 들어 있는 패널이라 원장뿐 아니라 명단을 관리하는 선생님도 이쪽을 씁니다 —
+        사이드바에서 "반 미배정" 아이를 눌러 놓고 반을 정해 줄 수 없으면 반쪽짜리입니다.
+      */}
+      {canManageRoster(data) ? (
         <DirectorStudentPanel childId={openStudentId} onClose={() => setOpenStudentId(null)} />
       ) : (
         <StudentInfoDialog childId={openStudentId} onClose={() => setOpenStudentId(null)} onStartChat={openStudentChat} />

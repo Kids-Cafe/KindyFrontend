@@ -3,7 +3,7 @@ import { School, Plus, Pencil, Trash2, Check, X } from "lucide-react";
 import { useDashboardStore } from "@/app/dashboard/DashboardStoreContext";
 import { useConfirm } from "@/app/components/ConfirmDialog";
 
-/** 원장 전용: 반 생성/이름변경/삭제 화면입니다. */
+/** 반 생성/이름변경/삭제 화면입니다. MANAGE_CLASS 권한이 필요합니다(원장은 언제나 통과). */
 export function ClassManageFeature() {
   const { data, addClass, renameClass, deleteClass } = useDashboardStore();
   const { ask, dialog } = useConfirm();

@@ -49,7 +49,7 @@ function formatDate(ms: number): string {
 }
 
 /**
- * 원장 전용 멤버 관리 화면입니다. 디스코드의 "역할(role)" 시스템과 동일하게
+ * 멤버 관리 화면입니다(MANAGE_MEMBER 권한, 원장은 언제나). 디스코드의 "역할(role)" 시스템과 동일하게
  * 권한 묶음(역할)을 만들고, 유치원 소속 교사 계정에 배정합니다.
  * 교사 초대는 아이디로 검색해 실제로 가입된 계정을 특정한 뒤 초대 메시지를 보내는
  * 방식이며, 상대가 수락해야 비로소 정식 멤버(교사 계정 목록)에 합류합니다.
@@ -64,6 +64,13 @@ export function MemberManageFeature() {
   const { data, createRole, updateRolePermissions, deleteRole, assignTeacherRole, removeTeacherMembership, refreshWorkspace } = useDashboardStore();
   const { ask, dialog } = useConfirm();
   const [newRoleName, setNewRoleName] = useState("");
+
+  /**
+   * 역할이 **무엇을 할 수 있는지**는 원장만 정합니다. MANAGE_MEMBER 보유자에게 열어 주면
+   * 자기 역할에 나머지 권한을 전부 얹을 수 있기 때문입니다(서버도 `isOwner`로 막습니다).
+   * 역할을 만들고 배정하는 것까지는 MANAGE_MEMBER로 됩니다.
+   */
+  const canEditPermissions = data.role === "director";
 
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<PlainUserDTO[]>([]);
@@ -172,6 +179,11 @@ export function MemberManageFeature() {
           <ShieldCheck className="w-3.5 h-3.5" />
           권한 역할
         </div>
+        {!canEditPermissions && (
+          <p className="text-xs mb-4" style={{ color: "#A06080" }}>
+            역할을 만들고 배정할 수 있어요. 각 역할이 어떤 권한을 갖는지는 원장님만 바꿀 수 있어요.
+          </p>
+        )}
         <div className="flex items-center gap-2 mb-4">
           <input
             value={newRoleName}
@@ -211,19 +223,30 @@ export function MemberManageFeature() {
                 </button>
               </div>
               <div className="flex flex-wrap gap-2">
-                {ALL_PERMISSIONS.map((perm) => {
+                {/* 원장이 아니면 무엇이 켜져 있는지 보기만 합니다(끄고 켜는 건 원장의 몫). */}
+                {(canEditPermissions ? ALL_PERMISSIONS : role.permissions).map((perm) => {
                   const active = role.permissions.includes(perm);
-                  return (
+                  const chipStyle = active
+                    ? { background: `${role.color}22`, color: role.color, border: `1px solid ${role.color}55` }
+                    : { background: "#F9FAFB", color: "#9CA3AF", border: "1px solid #F3F4F6" };
+                  return canEditPermissions ? (
                     <button
                       key={perm}
                       onClick={() => togglePermission(role.id, perm, role.permissions)}
                       className="text-xs font-bold px-2.5 py-1.5 rounded-full transition-all"
-                      style={active ? { background: `${role.color}22`, color: role.color, border: `1px solid ${role.color}55` } : { background: "#F9FAFB", color: "#9CA3AF", border: "1px solid #F3F4F6" }}
+                      style={chipStyle}
                     >
                       {PERMISSION_LABELS[perm]}
                     </button>
+                  ) : (
+                    <span key={perm} className="text-xs font-bold px-2.5 py-1.5 rounded-full" style={chipStyle}>
+                      {PERMISSION_LABELS[perm]}
+                    </span>
                   );
                 })}
+                {!canEditPermissions && role.permissions.length === 0 && (
+                  <span className="text-xs" style={{ color: "#A06080" }}>아직 아무 권한도 없어요.</span>
+                )}
               </div>
             </div>
           ))}

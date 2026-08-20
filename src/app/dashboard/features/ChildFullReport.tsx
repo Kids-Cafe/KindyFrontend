@@ -5,6 +5,7 @@ import { useAuth } from "@/app/auth/AuthContext";
 import { useDisplayName } from "@/app/auth/useDisplayName";
 import { REPORT_CATEGORY_ORDER, REPORT_META } from "@/app/dashboard/reportMeta";
 import { ReportByCategory } from "@/app/dashboard/reports";
+import { parentNames } from "@/app/dashboard/parents";
 import type { ChildRecord } from "@/app/dashboard/types";
 
 // 키가 한글이라 따옴표로 감쌉니다. 식별자로 그냥 쓰면 유효하긴 하지만
@@ -138,7 +139,7 @@ export function ChildFullReport({ child, viewerRole }: { child: ChildRecord; vie
               value={noteText}
               onChange={(e) => setNoteText(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && submitNote()}
-              placeholder={`${child.parentName}에게 전할 이야기를 남겨보세요`}
+              placeholder={`${parentNames(child, "보호자")}에게 전할 이야기를 남겨보세요`}
               className="flex-1 rounded-full px-4 py-2.5 text-sm outline-none"
               style={{ background: "var(--input-background)", border: "1px solid rgba(232,121,160,0.2)" }}
             />
@@ -151,11 +152,24 @@ export function ChildFullReport({ child, viewerRole }: { child: ChildRecord; vie
 
       {viewerRole === "teacher" && (
         <>
-          <SectionHeading icon={Phone}>부모 정보</SectionHeading>
-          <div className="rounded-2xl bg-card border p-4" style={{ borderColor: "rgba(232,121,160,0.15)" }}>
-            <p className="text-sm font-bold" style={{ color: "#3B1355" }}>{child.parentName}</p>
-            <p className="text-xs mt-0.5" style={{ color: "#A06080" }}>{child.nickname} 학생의 보호자</p>
-          </div>
+          <SectionHeading icon={Phone}>보호자 정보</SectionHeading>
+          {/* 보호자는 여러 명일 수 있습니다. 한 명만 찍으면 나머지 보호자는 없는 사람이 됩니다. */}
+          {child.parents.length === 0 ? (
+            <div className="rounded-2xl bg-card border p-4" style={{ borderColor: "rgba(232,121,160,0.15)" }}>
+              <p className="text-sm" style={{ color: "#A06080" }}>아직 연결된 보호자 계정이 없어요.</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {child.parents.map((parent) => (
+                <div key={parent.id} className="rounded-2xl bg-card border p-4" style={{ borderColor: "rgba(232,121,160,0.15)" }}>
+                  <p className="text-sm font-bold" style={{ color: "#3B1355" }}>{parent.name}</p>
+                  <p className="text-xs mt-0.5" style={{ color: "#A06080" }}>
+                    {child.nickname} 학생의 보호자{parent.phone ? ` · ${parent.phone}` : ""}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
         </>
       )}
     </div>

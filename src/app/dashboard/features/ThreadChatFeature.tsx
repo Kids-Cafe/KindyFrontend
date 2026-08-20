@@ -14,11 +14,25 @@ function formatTime(ms: number): string {
  * 부모 ↔ 선생님 채팅 한 개 스레드의 대화창입니다.
  * 공식 상담 채널처럼, 입력창 위 칩 버튼으로 아이의 데이터(건강/식단/성격/학습/교우관계)를
  * 카드 형태로 대화에 바로 불러올 수 있습니다.
+ *
+ * 대화 상대는 아이가 아니라 **보호자 한 명**입니다(`parentId`). 아이에게 보호자가 둘이면
+ * 담임과의 대화도 둘이라, 어느 쪽인지 부르는 쪽이 정해 줘야 합니다.
  */
-export function ThreadChatFeature({ childId, viewerRole, viewerName }: { childId: string; viewerRole: ChatSender; viewerName: string }) {
+export function ThreadChatFeature({
+  childId,
+  parentId,
+  viewerRole,
+  viewerName,
+}: {
+  childId: string;
+  parentId: string;
+  viewerRole: ChatSender;
+  viewerName: string;
+}) {
   const { data, sendThreadMessage, insertDataCard } = useDashboardStore();
   const [input, setInput] = useState("");
-  const thread = data.threadsByChild[childId];
+  const thread = (data.threadsByChild[childId] ?? []).find((t) => t.parentId === parentId);
+  const child = data.classChildren.find((c) => c.id === childId);
   const reports = data.reportsByChild[childId];
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -26,28 +40,44 @@ export function ThreadChatFeature({ childId, viewerRole, viewerName }: { childId
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [thread?.messages.length]);
 
-  if (!thread) return null;
+  // 아직 한 번도 주고받지 않은 상대와도 대화를 시작할 수 있어야 합니다. 서버 대화는
+  // 첫 메시지를 보낼 때 만들어지므로, 스레드가 없으면 빈 대화창을 그립니다.
+  const messages = thread?.messages ?? [];
+  const childNickname = thread?.childNickname ?? child?.nickname ?? "";
+  const counterpartName =
+    viewerRole === "parent"
+      ? thread?.teacherName ?? data.homeroomTeacher?.name ?? "선생님"
+      : thread?.parentName ?? child?.parents.find((p) => p.id === parentId)?.name ?? "보호자";
 
-  const counterpartName = viewerRole === "parent" ? thread.teacherName : thread.parentName;
+  if (!parentId) {
+    return (
+      <p className="text-sm" style={{ color: "#A06080" }}>
+        아직 연결된 보호자가 없어 대화를 시작할 수 없어요.
+      </p>
+    );
+  }
 
   function handleSend() {
     if (!input.trim()) return;
-    sendThreadMessage(childId, viewerRole, viewerName, input);
+    sendThreadMessage(childId, parentId, input);
     setInput("");
   }
 
   function handleDataFetch(category: DataCardType) {
-    insertDataCard(childId, viewerRole, viewerName, category);
+    insertDataCard(childId, parentId, category);
   }
 
   return (
     <div className="flex flex-col h-full max-w-2xl">
       <div className="pb-3 mb-3 border-b" style={{ borderColor: "rgba(232,121,160,0.15)" }}>
-        <p className="text-xs" style={{ color: "#A06080" }}>{thread.childNickname} 학생 · {counterpartName}님과의 대화</p>
+        <p className="text-xs" style={{ color: "#A06080" }}>{childNickname} 학생 · {counterpartName}님과의 대화</p>
       </div>
 
       <div className="flex-1 overflow-y-auto space-y-3 pr-1 pb-3">
-        {thread.messages.map((msg) => {
+        {messages.length === 0 && (
+          <p className="text-sm" style={{ color: "#A06080" }}>아직 대화가 없어요. 먼저 인사를 건네보세요.</p>
+        )}
+        {messages.map((msg) => {
           const isMine = msg.sender === viewerRole;
           if (msg.kind === "data-card" && msg.cardType) {
             return (

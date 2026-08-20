@@ -5,11 +5,13 @@ import { useAuth } from "@/app/auth/AuthContext";
 import { useDisplayName } from "@/app/auth/useDisplayName";
 import { useDashboardStore } from "@/app/dashboard/DashboardStoreContext";
 import { ClassAssignSelect } from "@/app/dashboard/ClassAssignSelect";
+import { parentNames } from "@/app/dashboard/parents";
 import { ChildFullReport } from "@/app/dashboard/features/ChildFullReport";
 import { ThreadChatFeature } from "@/app/dashboard/features/ThreadChatFeature";
 
 /**
- * 원장 화면의 우측 멤버 목록에서 학생을 클릭했을 때 뜨는 프로필 패널입니다.
+ * 명단을 관리하는 사람(원장, 또는 멤버·반 관리 권한을 받은 선생님)이 우측 멤버 목록에서
+ * 학생을 클릭했을 때 뜨는 프로필 패널입니다.
  * 클릭하면 바로 채팅으로 들어가는 대신 아이 정보(리포트 · 연동된 부모님)를 먼저 보여주고,
  * 필요할 때만 "부모님께 연락하기" 버튼으로 전환해 해당 학생의 담임-학부모 대화창에
  * 원장 자격으로 메시지를 보낼 수 있게 합니다.
@@ -20,6 +22,10 @@ export function DirectorStudentPanel({ childId, onClose }: { childId: string | n
   const { data } = useDashboardStore();
   const child = data.classChildren.find((c) => c.id === childId);
   const [view, setView] = useState<"info" | "contact">("info");
+  // 보호자가 둘 이상일 수 있어 어느 쪽과 이야기할지 고릅니다. 고르지 않았으면 첫 보호자입니다.
+  const [contactParentId, setContactParentId] = useState<string | null>(null);
+  const parents = child?.parents ?? [];
+  const activeParent = parents.find((p) => p.id === contactParentId) ?? parents[0];
 
   return (
     <Sheet
@@ -28,6 +34,7 @@ export function DirectorStudentPanel({ childId, onClose }: { childId: string | n
         if (!open) {
           onClose();
           setView("info");
+          setContactParentId(null);
         }
       }}
     >
@@ -45,7 +52,7 @@ export function DirectorStudentPanel({ childId, onClose }: { childId: string | n
                       {child.nickname}{child.age ? ` · ${child.age}세` : ""}
                     </p>
                     <p className="text-xs truncate" style={{ color: "#A06080" }}>
-                      {child.className}{child.parentName ? ` · ${child.parentName}` : ""}
+                      {child.className} · {parentNames(child)}
                     </p>
                   </div>
                 </div>
@@ -78,7 +85,35 @@ export function DirectorStudentPanel({ childId, onClose }: { childId: string | n
               </div>
             ) : (
               <div className="flex-1 min-h-0 flex flex-col px-4 pb-4">
-                {user && <ThreadChatFeature childId={child.id} viewerRole="director" viewerName={displayName} />}
+                {/* 보호자가 둘 이상이면 어느 쪽과의 대화인지 먼저 고릅니다. */}
+                {parents.length > 1 && (
+                  <div className="flex items-center gap-1.5 flex-wrap pb-3">
+                    {parents.map((parent) => {
+                      const selected = parent.id === activeParent?.id;
+                      return (
+                        <button
+                          key={parent.id}
+                          onClick={() => setContactParentId(parent.id)}
+                          aria-pressed={selected}
+                          className="text-xs font-bold px-2.5 py-1.5 rounded-full transition-all"
+                          style={selected
+                            ? { background: "rgba(232,121,160,0.14)", color: "#C0568A" }
+                            : { background: "#F9FAFB", color: "#9CA3AF", border: "1px solid #F3F4F6" }}
+                        >
+                          {parent.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                {user && (
+                  <ThreadChatFeature
+                    childId={child.id}
+                    parentId={activeParent?.id ?? ""}
+                    viewerRole={data.role === "director" ? "director" : "teacher"}
+                    viewerName={displayName}
+                  />
+                )}
               </div>
             )}
           </>

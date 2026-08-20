@@ -2,33 +2,75 @@ import { useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { KioSVG, KinaSVG } from "@/app/components/decorative";
 import { CHAR_DATA } from "@/app/data/characterData";
-import type { DashboardData, FeatureId } from "@/app/dashboard/types";
+import { canManageRoster } from "@/app/dashboard/classAccess";
+import { parentNames } from "@/app/dashboard/parents";
+import type { ChildRecord, DashboardData, FeatureId, TeacherRecord } from "@/app/dashboard/types";
 
 function GroupLabel({ children }: { children: React.ReactNode }) {
   return <p className="px-1 mb-2 text-xs font-bold uppercase tracking-wide" style={{ color: "#C0A0B5" }}>{children}</p>;
 }
 
+function TeacherRow({ teacher, subtitle, onOpen }: { teacher: TeacherRecord; subtitle: string; onOpen: (teacherId: string) => void }) {
+  return (
+    <button
+      onClick={() => onOpen(teacher.id)}
+      className="w-full flex items-center gap-2.5 px-2 py-2 rounded-xl text-left transition-colors hover:bg-black/[0.03]"
+    >
+      <span
+        className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0"
+        style={{ background: "linear-gradient(135deg,#60A5FA,#3B82F6)" }}
+      >
+        {(teacher.nickname || teacher.name).charAt(0)}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-bold truncate" style={{ color: "#3B1355" }}>{teacher.nickname || teacher.name}</span>
+        <span className="block text-xs truncate" style={{ color: "#A06080" }}>{subtitle}</span>
+      </span>
+    </button>
+  );
+}
+
+function ChildRow({ child, onOpen }: { child: ChildRecord; onOpen: (childId: string) => void }) {
+  return (
+    <button
+      onClick={() => onOpen(child.id)}
+      className="w-full flex items-center gap-2.5 px-2 py-2 rounded-xl text-left transition-colors hover:bg-black/[0.03]"
+    >
+      <span className="w-8 h-8 rounded-full flex items-center justify-center text-sm shrink-0" style={{ background: child.avatarColor }}>{child.avatarEmoji}</span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-bold truncate" style={{ color: "#3B1355" }}>{child.nickname}</span>
+        <span className="block text-xs truncate" style={{ color: "#A06080" }}>{parentNames(child)}</span>
+      </span>
+    </button>
+  );
+}
+
 /**
- * 원장 화면 전용: 반 하나를 카테고리처럼 접고 펼칠 수 있는 섹션입니다.
- * 담임 교사(클릭 시 교사 프로필) + 학생 목록(클릭 시 학생 프로필)을 함께 보여줍니다.
+ * 접고 펼칠 수 있는 멤버 묶음 하나입니다(반 하나, 또는 "반 미배정").
+ * 교사(클릭 시 교사 프로필) + 학생(클릭 시 학생 프로필)을 함께 보여줍니다.
+ *
+ * 교사는 `find`가 아니라 **전부** 그립니다. 예전에는 반마다 첫 교사 한 명만 그려서,
+ * 부담임처럼 같은 반에 배정된 두 번째 교사가 목록에서 사라졌습니다.
  */
-function ClassGroup({
-  data,
-  classId,
-  className,
+function MemberGroup({
+  label,
+  teachers,
+  children,
+  teacherSubtitle,
+  emptyNote,
   onOpenStudent,
   onOpenTeacher,
 }: {
-  data: DashboardData;
-  classId: number;
-  className: string;
+  label: string;
+  teachers: TeacherRecord[];
+  children: ChildRecord[];
+  teacherSubtitle: string;
+  emptyNote?: string;
   onOpenStudent: (childId: string) => void;
   onOpenTeacher: (teacherId: string) => void;
 }) {
   const [expanded, setExpanded] = useState(true);
-  const classTeacher = data.teachers.find((t) => t.classId === classId);
-  const children = data.classChildren.filter((c) => c.classId === classId);
-  const memberCount = (classTeacher ? 1 : 0) + children.length;
+  const memberCount = teachers.length + children.length;
 
   return (
     <div className="mb-3">
@@ -37,46 +79,21 @@ function ClassGroup({
         className="w-full flex items-center justify-between px-1 py-1.5 rounded-lg transition-colors hover:bg-black/[0.03]"
       >
         <span className="text-xs font-bold uppercase tracking-wide truncate" style={{ color: "#C0A0B5" }}>
-          {className} — {memberCount}
+          {label} — {memberCount}
         </span>
         <ChevronDown className="w-3.5 h-3.5 shrink-0 transition-transform" style={{ color: "#C0A0B5", transform: expanded ? "rotate(0deg)" : "rotate(-90deg)" }} />
       </button>
 
       {expanded && (
         <div className="space-y-1 mt-1">
-          {classTeacher ? (
-            <button
-              key={classTeacher.id}
-              onClick={() => onOpenTeacher(classTeacher.id)}
-              className="w-full flex items-center gap-2.5 px-2 py-2 rounded-xl text-left transition-colors hover:bg-black/[0.03]"
-            >
-              <span
-                className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0"
-                style={{ background: "linear-gradient(135deg,#60A5FA,#3B82F6)" }}
-              >
-                {(classTeacher.nickname || classTeacher.name).charAt(0)}
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm font-bold truncate" style={{ color: "#3B1355" }}>{classTeacher.nickname || classTeacher.name}</span>
-                <span className="block text-xs truncate" style={{ color: "#A06080" }}>담임 교사</span>
-              </span>
-            </button>
-          ) : (
-            <p className="px-2 py-1.5 text-xs" style={{ color: "#C0A0B5" }}>담임 미배정</p>
+          {teachers.length === 0 && emptyNote && (
+            <p className="px-2 py-1.5 text-xs" style={{ color: "#C0A0B5" }}>{emptyNote}</p>
           )}
-
+          {teachers.map((teacher) => (
+            <TeacherRow key={teacher.id} teacher={teacher} subtitle={teacherSubtitle} onOpen={onOpenTeacher} />
+          ))}
           {children.map((child) => (
-            <button
-              key={child.id}
-              onClick={() => onOpenStudent(child.id)}
-              className="w-full flex items-center gap-2.5 px-2 py-2 rounded-xl text-left transition-colors hover:bg-black/[0.03]"
-            >
-              <span className="w-8 h-8 rounded-full flex items-center justify-center text-sm shrink-0" style={{ background: child.avatarColor }}>{child.avatarEmoji}</span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm font-bold truncate" style={{ color: "#3B1355" }}>{child.nickname}</span>
-                <span className="block text-xs truncate" style={{ color: "#A06080" }}>{child.parentName}</span>
-              </span>
-            </button>
+            <ChildRow key={child.id} child={child} onOpen={onOpenStudent} />
           ))}
         </div>
       )}
@@ -85,10 +102,62 @@ function ClassGroup({
 }
 
 /**
+ * 유치원 전체를 반별로 묶어 보여줍니다. 원장과, 멤버·반을 관리할 권한을 받은 선생님이 봅니다.
+ *
+ * 마지막의 "반 미배정" 묶음이 핵심입니다. 예전에는 `data.classes`만 훑어서, **어느 반에도
+ * 속하지 않은 사람은 원장에게조차 보이지 않았습니다** — 갓 초대를 수락한 선생님도, 아직
+ * 반이 정해지지 않은 아이도 사이드바에 나타나지 않아 반을 배정해 줄 방법이 없었습니다.
+ */
+function KindergartenRoster({
+  data,
+  onOpenStudent,
+  onOpenTeacher,
+}: {
+  data: DashboardData;
+  onOpenStudent: (childId: string) => void;
+  onOpenTeacher: (teacherId: string) => void;
+}) {
+  const classIds = new Set(data.classes.map((c) => c.id));
+  // 사라진 반을 가리키는 낡은 배정도 "미배정"으로 봅니다. 그러지 않으면 또 숨습니다.
+  const inNoClass = (classId: number | undefined) => classId === undefined || !classIds.has(classId);
+  const looseTeachers = data.teachers.filter((t) => inNoClass(t.classId));
+  const looseChildren = data.classChildren.filter((c) => inNoClass(c.classId || undefined));
+
+  return (
+    <>
+      {data.classes.map((cls) => (
+        <MemberGroup
+          key={cls.id}
+          label={cls.name}
+          teachers={data.teachers.filter((t) => t.classId === cls.id)}
+          children={data.classChildren.filter((c) => c.classId === cls.id)}
+          teacherSubtitle="담임 교사"
+          emptyNote="담임 미배정"
+          onOpenStudent={onOpenStudent}
+          onOpenTeacher={onOpenTeacher}
+        />
+      ))}
+
+      {(looseTeachers.length > 0 || looseChildren.length > 0) && (
+        <MemberGroup
+          label="반 미배정"
+          teachers={looseTeachers}
+          children={looseChildren}
+          teacherSubtitle="유치원 소속"
+          onOpenStudent={onOpenStudent}
+          onOpenTeacher={onOpenTeacher}
+        />
+      )}
+    </>
+  );
+}
+
+/**
  * 디스코드의 "멤버 목록" 자리를 대체하는 우측 접이식 사이드바입니다.
  * 역할별로 보여주는 대상이 다릅니다:
- * - 원장: 반마다 접고 펼칠 수 있는 카테고리 (담임 교사 + 학생 목록, 클릭 시 각각의 프로필)
- * - 선생님: 학급 학생 전체 (클릭 시 학생 정보창)
+ * - 원장 · 멤버/반 관리 권한을 받은 선생님: 반마다 접고 펼칠 수 있는 카테고리
+ *   (교사 + 학생, 클릭 시 각각의 프로필) + 어느 반에도 속하지 않은 사람들
+ * - 그 밖의 선생님: 학급 학생 전체 (클릭 시 학생 정보창)
  * - 부모: 담임 선생님(클릭 시 채팅) + 우리 아이 전부(고른 아이는 리포트로, 나머지는 전환)
  * - 아이: 함께 하는 AI 파트너 상태 + 반 친구들(참고용)
  */
@@ -107,37 +176,20 @@ export function MemberSidebar({
 }) {
   return (
     <div className="w-64 h-full shrink-0 border-l bg-card overflow-y-auto px-3 py-4" style={{ borderColor: "rgba(232,121,160,0.15)" }}>
-      {data.role === "director" && (
-        <>
-          {data.classes.map((cls) => (
-            <ClassGroup
-              key={cls.id}
-              data={data}
-              classId={cls.id}
-              className={cls.name}
-              onOpenStudent={onOpenStudent}
-              onOpenTeacher={onOpenTeacher}
-            />
-          ))}
-        </>
+      {/*
+        원장과 "멤버/반 관리" 권한을 받은 선생님은 유치원 전체를 반별로 봅니다. 권한이 없는
+        선생님은 예전처럼 자기 반 학생만 봅니다.
+      */}
+      {canManageRoster(data) && (
+        <KindergartenRoster data={data} onOpenStudent={onOpenStudent} onOpenTeacher={onOpenTeacher} />
       )}
 
-      {data.role === "teacher" && (
+      {data.role === "teacher" && !canManageRoster(data) && (
         <>
           <GroupLabel>학생 — {(data.myClassChildren ?? []).length}</GroupLabel>
           <div className="space-y-1">
             {(data.myClassChildren ?? []).map((child) => (
-              <button
-                key={child.id}
-                onClick={() => onOpenStudent(child.id)}
-                className="w-full flex items-center gap-2.5 px-2 py-2 rounded-xl text-left transition-colors hover:bg-black/[0.03]"
-              >
-                <span className="w-8 h-8 rounded-full flex items-center justify-center text-sm shrink-0" style={{ background: child.avatarColor }}>{child.avatarEmoji}</span>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-bold truncate" style={{ color: "#3B1355" }}>{child.nickname}</span>
-                  <span className="block text-xs truncate" style={{ color: "#A06080" }}>{child.parentName}</span>
-                </span>
-              </button>
+              <ChildRow key={child.id} child={child} onOpen={onOpenStudent} />
             ))}
           </div>
         </>

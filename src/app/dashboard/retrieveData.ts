@@ -6,6 +6,7 @@ import type {
   ClassRecord,
   DashboardData,
   KindergartenRecord,
+  ParentRef,
   TeacherRecord,
 } from "@/app/dashboard/types";
 import { toTeacherRecords } from "@/app/dashboard/backendSync";
@@ -140,11 +141,10 @@ function toChildRecord(
   relationship: RelationshipDTO,
   classes: ClassRecord[],
   kindergarten: KindergartenRecord,
-  parentByChildId: Map<string, string>,
+  parentsByChildId: Map<string, ParentRef[]>,
   teachers: TeacherRecord[],
 ): ChildRecord {
   const className = classes.find((c) => c.id === relationship.classId)?.name ?? "반 미배정";
-  const parentId = parentByChildId.get(relationship.userId);
   return {
     id: relationship.userId,
     name: relationship.userName ?? relationship.userId,
@@ -155,7 +155,7 @@ function toChildRecord(
     className,
     kindergartenId: kindergarten.id,
     kindergartenName: kindergarten.name,
-    parentId,
+    parents: parentsByChildId.get(relationship.userId) ?? [],
     teacherId: teachers.find((t) => t.classId === relationship.classId)?.id,
     // AI 파트너 선택은 서버에 저장되는 값이 아닙니다(백엔드에 칼럼 없음).
     aiPartner: null,
@@ -205,19 +205,18 @@ export function buildMemberSnapshot(
   const myNickname = relationships.find((r) => r.userId === user.id)?.nickname?.trim() || undefined;
   const myDisplayName = myNickname ?? user.name;
 
-  const parentByChildId = new Map(families.map((f) => [f.child, f.parent]));
+  // `user/family/list`는 **로그인한 사람의** 가족 행만 돌려줍니다. 그래서 여기서 알 수 있는
+  // 보호자는 자기 자신뿐이고, 남의 아이의 보호자는 `user/family/parents`로 따로 받아
+  // `applyGuardians`가 덧씌웁니다. 그 응답이 오기 전에도 학부모 화면이 비지 않도록
+  // 아는 만큼(=나)만 먼저 채워 둡니다.
   const childIdsOfUser = new Set(families.filter((f) => f.parent === user.id).map((f) => f.child));
+  const parentsByChildId = new Map<string, ParentRef[]>(
+    [...childIdsOfUser].map((childId) => [childId, [{ id: user.id, name: myDisplayName }]]),
+  );
 
   const classChildren = relationships
     .filter((r) => r.type === "CHILD")
-    .map((r) => toChildRecord(r, classes, kindergarten, parentByChildId, teachers));
-
-  // 부모 이름은 교사 명단이나 가족 관계에서 알 수 있는 만큼만 채웁니다.
-  const nameByUserId = new Map(relationships.map((r) => [r.userId, r.userName ?? r.userId]));
-  for (const child of classChildren) {
-    if (child.parentId) child.parentName = nameByUserId.get(child.parentId) ?? undefined;
-    if (child.parentId === user.id) child.parentName = myDisplayName;
-  }
+    .map((r) => toChildRecord(r, classes, kindergarten, parentsByChildId, teachers));
 
   const me = role === "child" ? classChildren.find((c) => c.id === user.id) : undefined;
   // 한 부모에게 아이가 여럿일 수 있습니다. `myChild`는 화면 15곳이 읽는 단수 필드라

@@ -5,6 +5,7 @@ import { useAuth } from "@/app/auth/AuthContext";
 import { useDisplayName } from "@/app/auth/useDisplayName";
 import { useDashboardStore } from "@/app/dashboard/DashboardStoreContext";
 import { ClassAssignSelect } from "@/app/dashboard/ClassAssignSelect";
+import { canManageKindergartenWide } from "@/app/dashboard/classAccess";
 
 function formatTime(ms: number): string {
   const d = new Date(ms);
@@ -12,17 +13,21 @@ function formatTime(ms: number): string {
 }
 
 /**
- * 원장 화면의 우측 멤버 목록에서 교사를 클릭했을 때 뜨는 프로필 사이드 패널입니다.
- * 원장은 별칭/권한을 그 자리에서 바로 편집할 수 있고, 누구나 이 패널에서 해당 교사에게
- * 바로 메시지를 보낼 수 있습니다(본인 자신은 제외).
+ * 우측 멤버 목록에서 교사를 클릭했을 때 뜨는 프로필 사이드 패널입니다.
+ * 멤버 관리 권한이 있으면 별칭/반/역할을 그 자리에서 바로 편집할 수 있고, 누구나 이
+ * 패널에서 해당 교사에게 바로 메시지를 보낼 수 있습니다(본인 자신은 제외).
  */
 export function MemberProfilePanel({ teacherId, onClose }: { teacherId: string | null; onClose: () => void }) {
   const { user } = useAuth();
   const displayName = useDisplayName();
   const { data, updateTeacherNickname, assignTeacherRole, sendMemberMessage } = useDashboardStore();
   const teacher = data.teachers.find((t) => t.id === teacherId);
-  const canEdit = data.role === "director";
+  // 별칭과 역할 배정은 서버가 MANAGE_MEMBER로 검사합니다. 원장으로만 좁혀 두면 그 권한을
+  // 받은 선생님이 여기서 아무것도 못 합니다(원장은 hasPermission을 언제나 통과합니다).
+  const canEdit = canManageKindergartenWide(data, "manageMembers");
   const isSelf = teacher?.id === user?.id;
+  // 말풍선의 좌우는 "편집 권한"이 아니라 내가 이 유치원에서 무엇인지로 갈립니다.
+  const myChatRole = data.role === "director" ? "director" : "teacher";
 
   const [nicknameDraft, setNicknameDraft] = useState("");
   const [editingNickname, setEditingNickname] = useState(false);
@@ -48,7 +53,7 @@ export function MemberProfilePanel({ teacherId, onClose }: { teacherId: string |
 
   function handleSend() {
     if (!teacher || !user || !input.trim()) return;
-    sendMemberMessage(teacher.id, canEdit ? "director" : "teacher", displayName, input);
+    sendMemberMessage(teacher.id, myChatRole, displayName, input);
     setInput("");
   }
 
@@ -132,7 +137,7 @@ export function MemberProfilePanel({ teacherId, onClose }: { teacherId: string |
                 <p className="text-xs font-bold mb-2" style={{ color: "#E879A0" }}>메시지</p>
                 <div className="flex-1 overflow-y-auto space-y-3 pr-1 pb-3">
                   {(thread?.messages ?? []).map((msg) => {
-                    const isMine = msg.sender === (canEdit ? "director" : "teacher");
+                    const isMine = msg.sender === myChatRole;
                     return (
                       <div key={msg.id} className={`flex flex-col ${isMine ? "items-end" : "items-start"}`}>
                         <div

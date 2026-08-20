@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { ChevronRight, Plus, X } from "lucide-react";
 import { useDashboardStore } from "@/app/dashboard/DashboardStoreContext";
-import { FEATURES_BY_ROLE } from "@/app/dashboard/featureDefs";
+import { featuresFor } from "@/app/dashboard/featureDefs";
 import { NoticesFeature } from "@/app/dashboard/features/NoticesFeature";
+import { parentNames } from "@/app/dashboard/parents";
 import type { DashboardRole, FeatureId } from "@/app/dashboard/types";
 
 /**
@@ -22,7 +23,9 @@ export function DashboardHomeFeature({
   const [pickerOpen, setPickerOpen] = useState(false);
   const children = data.myClassChildren ?? [];
 
-  const catalogue = FEATURES_BY_ROLE[role].filter((f) => f.id !== "home");
+  // 위젯으로 붙일 수 있는 기능은 사이드바에 실제로 뜨는 것과 같아야 합니다 — 권한으로
+  // 열린 반/멤버 관리도 여기서 바로 꺼내 쓸 수 있습니다.
+  const catalogue = featuresFor(data).filter((f) => f.id !== "home");
   const widgetIds = data.homeWidgets;
   const addedWidgets = catalogue.filter((f) => widgetIds.includes(f.id));
   const availableToAdd = catalogue.filter((f) => !widgetIds.includes(f.id));
@@ -46,7 +49,7 @@ export function DashboardHomeFeature({
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-bold truncate" style={{ color: "#3B1355" }}>{child.nickname}</p>
                   <p className="text-xs truncate" style={{ color: "#A06080" }}>
-                    {[child.age ? `${child.age}세` : null, child.parentName].filter(Boolean).join(" · ") || child.className}
+                    {[child.age ? `${child.age}세` : null, parentNames(child, "")].filter(Boolean).join(" · ") || child.className}
                   </p>
                 </div>
                 <ChevronRight className="w-4 h-4 shrink-0" style={{ color: "#D1D5DB" }} />

@@ -175,6 +175,17 @@ describe("buildMemberSnapshot", () => {
     expect(snap.myChild).toBeUndefined();
   });
 
+  it("내가 보호자인 아이에는 나를 보호자로 달아 둔다", () => {
+    // `family/list`는 내 가족 행만 돌려주므로 여기서 알 수 있는 보호자는 나뿐입니다.
+    // 나머지 보호자는 `user/family/parents`를 받아 applyGuardians가 덧씌웁니다.
+    const user = makeUser({ role: "parent", teacherRole: undefined });
+    const snap = buildMemberSnapshot(user, "parent", KINDERGARTEN, CLASSES, relationships, families);
+
+    expect(snap.myChild?.parents).toEqual([{ id: "user-1", name: "김데모" }]);
+    // 남의 아이는 보호자를 알 길이 없으니 비어 있고, 화면은 그 빈 값을 그릴 수 있어야 합니다.
+    expect(snap.classChildren.find((c) => c.id === "child-1")!.parents).toEqual([]);
+  });
+
   it("아이 화면에서는 본인이 '나'가 된다", () => {
     const user = makeUser({ id: "child-1", accountType: "child" });
     const snap = buildMemberSnapshot(user, "child", KINDERGARTEN, CLASSES, relationships, []);

@@ -13,6 +13,7 @@ import type { MemberSnapshot } from "@/app/dashboard/retrieveData";
 import type {
   AIPartnerId,
   ChatSender,
+  ChatThread,
   ChildRecord,
   DashboardData,
   DataCardType,
@@ -61,6 +62,7 @@ import {
   fetchChildProfiles,
   fetchChildReports,
   fetchFamilies,
+  fetchGuardiansOf,
   fetchMyDiaries,
   fetchParentNotes,
 } from "@/app/dashboard/userSync";
@@ -97,10 +99,10 @@ interface DashboardStoreValue {
   choosePartner: (childId: string, partner: AIPartnerId) => void;
   /** AI 채팅에 메시지를 보냅니다. 서버가 답을 채우면 재조회로 반영됩니다. */
   sendAiMessage: (childId: string, text: string) => void;
-  /** 부모/선생님 채팅 스레드에 텍스트 메시지를 보냅니다. */
-  sendThreadMessage: (childId: string, sender: ChatSender, senderName: string, text: string) => void;
+  /** 부모/선생님 채팅 스레드에 텍스트 메시지를 보냅니다. 대화는 보호자별로 따로라 `parentId`가 필요합니다. */
+  sendThreadMessage: (childId: string, parentId: string, text: string) => void;
   /** 채팅창에서 "정보 불러오기" 버튼을 눌렀을 때 데이터 카드를 삽입합니다. */
-  insertDataCard: (childId: string, sender: ChatSender, senderName: string, cardType: DataCardType) => void;
+  insertDataCard: (childId: string, parentId: string, cardType: DataCardType) => void;
   aiTyping: Record<string, boolean>;
 
   /** 공지사항 CRUD (MANAGE_NOTICE 필요). */
@@ -145,7 +147,8 @@ interface DashboardStoreValue {
   /** 로그인한 본인이 이 유치원에서 쓸 별칭을 바꿉니다. 서버 저장에 실패하면 던집니다. */
   setMyNickname: (nickname: string) => Promise<void>;
   /** 멤버(아이·교사)를 반에 배정하거나 해제합니다(MANAGE_CLASS 필요). */
-  assignMemberClass: (userId: string, classId: number | undefined) => void;
+  /** 서버 저장에 실패하면 던집니다 — 부르는 쪽이 "반을 바꾸지 못했어요"를 띄울 수 있게. */
+  assignMemberClass: (userId: string, classId: number | undefined) => Promise<void>;
   sendMemberMessage: (teacherId: string, senderRole: ChatSender, senderName: string, text: string) => void;
 
   /** 메인페이지(홈)에 기능 위젯을 추가/제거합니다. */
@@ -291,7 +294,7 @@ export function DashboardStoreProvider({
         // 나이·성별은 관계 응답에 없고 아이 계정 프로필에만 있습니다. user/info가 childId를
         // 받게 되면서 볼 수 있는 아이에 한해 채울 수 있게 됐습니다. 권한이 없는 아이는
         // 개별적으로 실패하고 나머지는 그대로 옵니다.
-        const snapshot = await applyChildProfiles(target.role, baseSnapshot);
+        const snapshot = await applyGuardians(target.role, await applyChildProfiles(target.role, baseSnapshot));
 
         const [suppliesEntries, photosByClass] = await Promise.all([
           Promise.all(classes.map(async (c) => [c.id, await fetchSupplies(c.id).catch(() => [])] as const)),
@@ -741,13 +744,13 @@ export function DashboardStoreProvider({
   );
 
   const sendThreadMessage = useCallback(
-    async (childId: string, _sender: ChatSender, _senderName: string, text: string) => {
+    async (childId: string, parentId: string, text: string) => {
       const trimmed = text.trim();
       if (!trimmed || !data) return;
-      const thread = data.threadsByChild[childId];
-      if (!thread) return;
+      const target = threadEndpoints(data, childId, parentId);
+      if (!target) return;
       try {
-        const chat = await ensureChat(data.kindergarten.id, thread.parentId, thread.teacherId);
+        const chat = await ensureChat(data.kindergarten.id, target.parentId, target.teacherId);
         await sendChatMessage(chat.id, trimmed);
         refresh();
       } catch (cause) {
@@ -758,12 +761,12 @@ export function DashboardStoreProvider({
   );
 
   const insertDataCard = useCallback(
-    async (childId: string, _sender: ChatSender, _senderName: string, cardType: DataCardType) => {
+    async (childId: string, parentId: string, cardType: DataCardType) => {
       if (!data) return;
-      const thread = data.threadsByChild[childId];
-      if (!thread) return;
+      const target = threadEndpoints(data, childId, parentId);
+      if (!target) return;
       try {
-        const chat = await ensureChat(data.kindergarten.id, thread.parentId, thread.teacherId);
+        const chat = await ensureChat(data.kindergarten.id, target.parentId, target.teacherId);
         await sendChatMessage(chat.id, cardType, { cardType });
         refresh();
       } catch (cause) {
@@ -901,6 +904,28 @@ export function DashboardStoreProvider({
 
 // ---- 로딩 헬퍼 ----
 
+/**
+ * 이 아이-보호자 대화의 두 당사자입니다.
+ *
+ * 이미 오간 대화가 있으면 그 스레드를 그대로 쓰고, 없으면 아이의 담임과 보호자로 새로
+ * 정합니다 — 예전에는 스레드가 없으면 그냥 돌아가서 **첫 메시지를 보낼 방법이 없었습니다**
+ * (대화는 `ensureChat`이 첫 전송 때 만듭니다).
+ */
+function threadEndpoints(
+  data: DashboardData,
+  childId: string,
+  parentId: string,
+): { parentId: string; teacherId: string } | undefined {
+  const existing = (data.threadsByChild[childId] ?? []).find((t) => t.parentId === parentId);
+  if (existing) return { parentId: existing.parentId, teacherId: existing.teacherId };
+
+  if (!parentId) return undefined;
+  const child = data.classChildren.find((c) => c.id === childId);
+  const teacherId = child?.teacherId ?? data.teacher.id;
+  if (!teacherId || teacherId === parentId) return undefined;
+  return { parentId, teacherId };
+}
+
 /** 이 역할이 리포트·알림장을 볼 수 있는 아이 목록입니다. 서버도 같은 기준으로 한 번 더 검사합니다. */
 /**
  * 볼 수 있는 아이들의 나이·성별을 프로필에서 채워 넣습니다.
@@ -943,11 +968,54 @@ async function applyChildProfiles(
   };
 }
 
+/**
+ * 아이별 보호자를 채워 넣습니다.
+ *
+ * `user/family/list`는 로그인한 본인의 가족 행만 돌려주므로, 교사·원장 화면에서는
+ * 아이의 보호자 이름이 **언제나 비어 있었습니다**("undefined님과 채팅하기"). 아이를
+ * 기준으로 조회하는 `user/family/parents`로 받아 오고, 한 아이에 보호자가 여럿이면
+ * 여럿 다 채웁니다. 한 명당 요청 하나라 아이 수만큼 나가고, 개별 실패는 삼킵니다.
+ */
+async function applyGuardians(
+  role: DashboardData["role"],
+  snapshot: MemberSnapshot,
+): Promise<MemberSnapshot> {
+  const targets = childrenVisibleTo(role, snapshot);
+  if (targets.length === 0) return snapshot;
+
+  const guardians = await fetchGuardiansOf(targets.map((c) => c.id)).catch(
+    (): Record<string, PlainUserDTO[]> => ({}),
+  );
+
+  const enrich = <T extends ChildRecord>(child: T): T => {
+    const found = guardians[child.id];
+    // 조회에 실패한 아이는 이미 알고 있는 값(=본인이 보호자인 경우)을 지우지 않습니다.
+    if (!found) return child;
+    return { ...child, parents: found.map((g) => ({ id: g.id, name: g.name, phone: g.phone })) };
+  };
+
+  return {
+    ...snapshot,
+    me: snapshot.me && enrich(snapshot.me),
+    myChild: snapshot.myChild && enrich(snapshot.myChild),
+    myChildren: snapshot.myChildren?.map(enrich),
+    myClassChildren: snapshot.myClassChildren?.map(enrich),
+    classChildren: snapshot.classChildren.map(enrich),
+  };
+}
+
+/**
+ * 이 역할이 리포트·알림장·보호자 정보를 볼 수 있는 아이 목록입니다. 서버도 같은 기준으로
+ * 한 번 더 검사합니다.
+ *
+ * 선생님은 **담당 반이 아니라 유치원 전체**입니다. 서버의 `canViewChild`가 그렇게 판정하고
+ * (그 아이가 다니는 유치원의 교사면 통과), 자기 반만 훑으면 아직 반이 정해지지 않은 아이가
+ * 어느 목록에도 걸리지 않아 화면에서 통째로 사라집니다.
+ */
 function childrenVisibleTo(role: DashboardData["role"], snapshot: MemberSnapshot): ChildRecord[] {
   if (role === "child") return snapshot.me ? [snapshot.me] : [];
   // 아이가 둘 이상인 부모도 있습니다. myChild(첫째)만 보면 둘째의 리포트·알림장이 로드되지 않습니다.
   if (role === "parent") return snapshot.myChildren ?? [];
-  if (role === "teacher") return snapshot.myClassChildren ?? [];
   return snapshot.classChildren;
 }
 
@@ -1003,9 +1071,9 @@ async function loadChatThreads(
   for (const c of snapshot.classChildren) {
     nameById[c.id] = c.nickname;
     senderById[c.id] = "child";
-    if (c.parentId) {
-      nameById[c.parentId] = c.parentName ?? "학부모";
-      senderById[c.parentId] = "parent";
+    for (const parent of c.parents) {
+      nameById[parent.id] = parent.name;
+      senderById[parent.id] = "parent";
     }
   }
   const participants: ChatParticipants = { nameById, senderById };
@@ -1018,22 +1086,28 @@ async function loadChatThreads(
   const memberThreadsByTeacher: DashboardData["memberThreadsByTeacher"] = {};
 
   await Promise.all([
-    // 학부모 ↔ 담임: 아이 한 명당 하나입니다.
+    // 학부모 ↔ 담임: 보호자 한 명당 하나입니다. 아이에게 보호자가 둘이면 대화도 둘이고,
+    // 예전처럼 하나만 남기면 나머지 보호자의 대화는 아무 화면에도 뜨지 않습니다.
     ...snapshot.classChildren.map(async (child) => {
       const teacherId = child.teacherId ?? snapshot.teacher.id;
-      if (!child.parentId) return;
-      const chat = between(child.parentId, teacherId);
-      if (!chat) return;
-      threadsByChild[child.id] = {
-        id: chat.id,
-        childId: child.id,
-        childNickname: child.nickname,
-        parentId: child.parentId,
-        parentName: child.parentName ?? "학부모",
-        teacherId,
-        teacherName: nameById[teacherId] ?? teacherId,
-        messages: await fetchChatMessages(chat, participants).catch(() => []),
-      };
+      const threads = await Promise.all(
+        child.parents.map(async (parent) => {
+          const chat = between(parent.id, teacherId);
+          if (!chat) return null;
+          return {
+            id: chat.id,
+            childId: child.id,
+            childNickname: child.nickname,
+            parentId: parent.id,
+            parentName: parent.name,
+            teacherId,
+            teacherName: nameById[teacherId] ?? teacherId,
+            messages: await fetchChatMessages(chat, participants).catch(() => []),
+          };
+        }),
+      );
+      const found = threads.filter((t): t is ChatThread => t !== null);
+      if (found.length > 0) threadsByChild[child.id] = found;
     }),
 
     // 아이 ↔ AI 파트너: host와 client가 모두 아이 본인인 자기 대화입니다.

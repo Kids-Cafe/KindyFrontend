@@ -10,5 +10,7 @@ export function ParentChatFeature() {
   const { data } = useDashboardStore();
   if (!data.myChild || !user) return null;
 
-  return <ThreadChatFeature childId={data.myChild.id} viewerRole="parent" viewerName={displayName} />;
+  // 로그인한 본인이 곧 이 대화의 보호자 쪽입니다. 아이에게 보호자가 둘이어도 다른 보호자의
+  // 대화는 남의 대화라 여기 섞이지 않습니다(서버 `chat/list`도 내 것만 돌려줍니다).
+  return <ThreadChatFeature childId={data.myChild.id} parentId={user.id} viewerRole="parent" viewerName={displayName} />;
 }
