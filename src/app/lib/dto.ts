@@ -201,6 +201,33 @@ export interface FamilyDTO {
   createdAt?: number;
 }
 
+export type FamilyInviteStatus = "PENDING" | "ACCEPTED" | "REJECTED" | "CANCELED";
+
+/**
+ * 부모↔아이 연결 요청입니다(T_FAMILY_INVITE). 수락되면 그때 `FamilyDTO` 행이 생깁니다.
+ *
+ * `InviteDTO`와 달리 방향(direction) 필드가 없습니다. 요청을 만드는 경우가 셋이고
+ * (부모가 될 사람 / 아이 본인 / 기존 보호자의 공동 양육자 제안) 두 값짜리 enum으로는
+ * 셋째를 담을 수 없어서, `requesterId`를 `parent`·`child`와 비교해 판별합니다.
+ */
+export interface FamilyInviteDTO {
+  id: number;
+  parent: string;
+  child: string;
+  requesterId: string;
+  parentName?: string;
+  childName?: string;
+  requesterName?: string;
+  status: FamilyInviteStatus;
+  /**
+   * 이 목록을 받은 계정이 이 건을 수락/거절할 수 있는지. 승인 규칙은 아이의 현재 보호자
+   * 목록을 봐야 정해지는데 클라이언트에는 그 정보가 없으므로, 서버가 계산해 내려줍니다.
+   */
+  canRespond?: boolean;
+  createdAt: number;
+  updatedAt?: number;
+}
+
 export interface ChatDTO {
   id: number;
   kindergartenId: number;
@@ -234,7 +261,8 @@ export interface PlainUserDTO {
   postcode?: string;
   accountType?: "ADULT" | "CHILD";
   birthDate?: string;
-  gender?: "MALE" | "FEMALE";
+  /** 서버 칼럼은 세 값입니다. 화면의 `StudentGender`는 둘뿐이라 UNSPECIFIED는 undefined로 옮깁니다. */
+  gender?: "MALE" | "FEMALE" | "UNSPECIFIED";
   guardianName?: string;
   guardianPhone?: string;
   onboardingCompleted?: boolean;

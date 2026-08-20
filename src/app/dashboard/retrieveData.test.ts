@@ -138,9 +138,32 @@ describe("buildMemberSnapshot", () => {
     const snap = buildMemberSnapshot(user, "parent", KINDERGARTEN, CLASSES, relationships, families);
 
     expect(snap.myChild?.id).toBe("child-2");
+    expect(snap.myChildren?.map((c) => c.id)).toEqual(["child-2"]);
     expect(snap.me).toBeUndefined();
     // 담임은 그 아이가 속한 반의 교사입니다.
     expect(snap.teacher.id).toBe("teacher-2");
+  });
+
+  it("아이가 여럿인 학부모는 전부 잡고, myChild는 그 첫 번째다", () => {
+    const user = makeUser({ role: "parent", teacherRole: undefined });
+    const twoChildren: FamilyDTO[] = [
+      { parent: "user-1", child: "child-2" },
+      { parent: "user-1", child: "child-3" },
+    ];
+    const snap = buildMemberSnapshot(user, "parent", KINDERGARTEN, CLASSES, relationships, twoChildren);
+
+    // 둘째까지 잡혀야 리포트·알림장이 두 아이 모두에 대해 로드됩니다.
+    expect(snap.myChildren?.map((c) => c.id)).toEqual(["child-2", "child-3"]);
+    expect(snap.myChild?.id).toBe("child-2");
+  });
+
+  it("남의 가족 관계는 '내 아이'로 세지 않는다", () => {
+    const user = makeUser({ role: "parent", teacherRole: undefined });
+    const someoneElses: FamilyDTO[] = [{ parent: "other-parent", child: "child-1" }];
+    const snap = buildMemberSnapshot(user, "parent", KINDERGARTEN, CLASSES, relationships, someoneElses);
+
+    expect(snap.myChildren).toEqual([]);
+    expect(snap.myChild).toBeUndefined();
   });
 
   it("아이 화면에서는 본인이 '나'가 된다", () => {

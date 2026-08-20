@@ -7,6 +7,8 @@ import {
   fetchReceivedInvites,
   rejectInviteOnServer,
 } from "@/app/dashboard/backendSync";
+import { FamilyInvites } from "@/app/auth/FamilyInvites";
+import { isChildAccount as isChildAccountOf } from "@/app/auth/accountType";
 import type { InviteDTO } from "@/app/lib/dto";
 
 /**
@@ -69,7 +71,7 @@ export function ReceivedInvites({ onAccepted }: { onAccepted?: () => void }) {
   const { user } = useAuth();
   const [invites, setInvites] = useState<InviteDTO[]>([]);
   const [busyId, setBusyId] = useState<number | null>(null);
-  const isChildAccount = user?.accountType === "child";
+  const isChildAccount = isChildAccountOf(user);
 
   const refresh = useCallback(() => {
     if (!user) return;
@@ -84,7 +86,9 @@ export function ReceivedInvites({ onAccepted }: { onAccepted?: () => void }) {
   const received = invites.filter((i) => i.direction === "INVITE");
   const requested = invites.filter((i) => i.direction === "JOIN");
 
-  if (!user || invites.length === 0) return null;
+  // 유치원 초대가 없어도 가족 연결 요청은 있을 수 있습니다. 예전처럼 여기서 바로 null을
+  // 돌려주면 아래에 붙인 FamilyInvites까지 함께 사라집니다.
+  if (!user) return null;
 
   /** 서버가 처리를 받아들인 뒤에야 목록에서 지웁니다. 실패하면 초대장이 그대로 남습니다. */
   async function respond(inviteId: number, action: "accept" | "reject" | "cancel") {
@@ -106,6 +110,10 @@ export function ReceivedInvites({ onAccepted }: { onAccepted?: () => void }) {
 
   return (
     <div className="space-y-2 mb-4">
+      {/* 가족 연결 요청도 "나에게 온 것"이라 같은 자리에 놓습니다. 이 컴포넌트가 이미
+          대시보드·마이페이지·온보딩 네 곳에 붙어 있어 새 알림 자리를 만들 필요가 없습니다. */}
+      <FamilyInvites onChanged={onAccepted} />
+
       {received.length > 0 && (
         <>
           <p className="text-xs font-bold flex items-center gap-1.5" style={{ color: "#E879A0" }}>

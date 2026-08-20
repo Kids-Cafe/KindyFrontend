@@ -2,6 +2,7 @@ import { apiGet, apiPost } from "@/app/lib/api";
 import type {
   DiaryDTO,
   FamilyDTO,
+  FamilyInviteDTO,
   ParentNoteCommentDTO,
   ParentNoteDTO,
   PlainUserDTO,
@@ -193,12 +194,96 @@ export async function fetchFamilies(): Promise<FamilyDTO[]> {
   return apiGet<FamilyDTO[]>("/api/user/family/list");
 }
 
-export async function addFamilyOnServer(parent: string, child: string): Promise<void> {
-  await apiPost("/api/user/family/add", { parent, child });
-}
-
+/**
+ * 연결을 끊습니다. 만드는 것과 달리 한쪽이 혼자 할 수 있습니다 — 행을 지우는 건 권한을
+ * 줄이기만 해서 상대가 동의할 대상이 없기 때문입니다. 마지막 보호자가 자신을 끊는 것도
+ * 서버는 막지 않으니, 그 경고는 화면이 합니다.
+ */
 export async function removeFamilyOnServer(parent: string, child: string): Promise<void> {
   await apiPost("/api/user/family/remove", { parent, child });
+}
+
+/**
+ * 다른 사람의 프로필입니다. `userId`를 빼면 본인 것으로, 로그인 직후 호출과 같습니다.
+ * 서버는 `canViewChild`(본인·부모·아이가 다니는 유치원의 교사)로 막습니다.
+ */
+export async function fetchUserInfo(userId?: string): Promise<PlainUserDTO> {
+  return apiGet<PlainUserDTO>("/api/user/info", { userId });
+}
+
+/**
+ * 여러 아이의 프로필을 한 번에 채웁니다. 서버에 묶음 조회가 없어 아이 수만큼 나갑니다.
+ * 개별 실패는 삼킵니다 — 나이·성별은 선택 필드이고, 교사 시점에서는 볼 수 없는 아이가
+ * 섞일 수 있어 한 명 때문에 목록 전체가 비면 안 됩니다.
+ */
+export async function fetchChildProfiles(ids: string[]): Promise<Record<string, PlainUserDTO>> {
+  const entries = await Promise.all(
+    ids.map(async (id) => [id, await fetchUserInfo(id).catch(() => null)] as const),
+  );
+  return Object.fromEntries(entries.filter((e): e is [string, PlainUserDTO] => e[1] !== null));
+}
+
+export interface ChildAccountDraft {
+  loginId: string;
+  password: string;
+  name: string;
+  phone: string;
+  birthDate: string;
+  gender?: "MALE" | "FEMALE";
+  guardianName?: string;
+  guardianPhone?: string;
+}
+
+/**
+ * 로그인한 보호자가 아이 계정을 만들고, 같은 트랜잭션에서 가족 연결까지 세웁니다.
+ * 계정을 만든 사람이 곧 관계의 당사자라 동의 절차가 없는 경로입니다.
+ *
+ * ⚠️ `auth/signup.ts`의 `registerUser`를 쓰면 안 됩니다. 그쪽은 생성 직후 `user/login`을
+ * 부르고 서버 `login`은 세션을 새로 만들어, 부모가 방금 만든 아이 계정으로 로그인돼
+ * 버립니다. 여기서는 요청 하나만 보내고 세션을 건드리지 않습니다.
+ */
+export async function createChildAccount(draft: ChildAccountDraft): Promise<void> {
+  await apiPost("/api/user/child/create", {
+    id: draft.loginId,
+    password: draft.password,
+    name: draft.name,
+    phone: draft.phone,
+    birthDate: draft.birthDate,
+    gender: draft.gender,
+    guardianName: draft.guardianName,
+    guardianPhone: draft.guardianPhone,
+  });
+}
+
+/** 보낸 항목만 저장됩니다(`undefined`는 `apiPost`가 떨어뜨립니다). 주소·이메일·비밀번호는 대상이 아닙니다. */
+export interface ChildProfilePatch {
+  name?: string;
+  phone?: string;
+  birthDate?: string;
+  gender?: "MALE" | "FEMALE" | "UNSPECIFIED";
+  guardianName?: string;
+  guardianPhone?: string;
+}
+
+export async function updateChildProfileOnServer(childId: string, patch: ChildProfilePatch): Promise<void> {
+  await apiPost("/api/user/child/update", { childId, ...patch });
+}
+
+// ---- Family link requests ----
+/** 본인이 관련된 대기 중인 연결 요청입니다. 답할 수 있는지는 서버가 `canRespond`로 알려줍니다. */
+export async function fetchFamilyInvites(): Promise<FamilyInviteDTO[]> {
+  return apiGet<FamilyInviteDTO[]>("/api/user/family/invite/list");
+}
+
+export async function sendFamilyInvite(parent: string, child: string): Promise<void> {
+  await apiPost("/api/user/family/invite", { parent, child });
+}
+
+export async function respondToFamilyInvite(
+  id: number,
+  action: "accept" | "reject" | "cancel",
+): Promise<void> {
+  await apiPost(`/api/user/family/invite/${action}`, { id });
 }
 
 // ---- User search ----

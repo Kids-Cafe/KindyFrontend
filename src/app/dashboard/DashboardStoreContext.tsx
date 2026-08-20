@@ -2,12 +2,14 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { ReactNode } from "react";
 import { useAuth } from "@/app/auth/AuthContext";
 import {
+  ageFromBirthDate,
   buildMemberSnapshot,
   emptyChildReports,
   emptyDashboardData,
   defaultHomeWidgets,
   roleFromRelationship,
 } from "@/app/dashboard/retrieveData";
+import type { MemberSnapshot } from "@/app/dashboard/retrieveData";
 import type {
   AIPartnerId,
   ChatSender,
@@ -20,7 +22,7 @@ import type {
   PhotoThemeId,
   TeacherRecord,
 } from "@/app/dashboard/types";
-import type { ChatDTO } from "@/app/lib/dto";
+import type { ChatDTO, PlainUserDTO } from "@/app/lib/dto";
 import {
   addPhotoOnServer,
   createClass,
@@ -56,6 +58,7 @@ import {
 import {
   createParentNoteCommentOnServer,
   createParentNoteOnServer,
+  fetchChildProfiles,
   fetchChildReports,
   fetchFamilies,
   fetchMyDiaries,
@@ -267,7 +270,12 @@ export function DashboardStoreProvider({
           fetchFamilies().catch(() => []),
         ]);
 
-        const snapshot = buildMemberSnapshot(user, target.role, kindergarten, classes, members, families);
+        const baseSnapshot = buildMemberSnapshot(user, target.role, kindergarten, classes, members, families);
+
+        // 나이·성별은 관계 응답에 없고 아이 계정 프로필에만 있습니다. user/info가 childId를
+        // 받게 되면서 볼 수 있는 아이에 한해 채울 수 있게 됐습니다. 권한이 없는 아이는
+        // 개별적으로 실패하고 나머지는 그대로 옵니다.
+        const snapshot = await applyChildProfiles(target.role, baseSnapshot);
 
         const [suppliesEntries, photosByClass] = await Promise.all([
           Promise.all(classes.map(async (c) => [c.id, await fetchSupplies(c.id).catch(() => [])] as const)),
@@ -586,6 +594,7 @@ export function DashboardStoreProvider({
         myNickname: userId === user?.id ? nickname || undefined : prev.myNickname,
         me: prev.me?.id === userId ? { ...prev.me, nickname: nickname || prev.me.name } : prev.me,
         myChild: prev.myChild?.id === userId ? { ...prev.myChild, nickname: nickname || prev.myChild.name } : prev.myChild,
+        myChildren: prev.myChildren?.map((c) => (c.id === userId ? { ...c, nickname: nickname || c.name } : c)),
         classChildren: prev.classChildren.map((c) => (c.id === userId ? { ...c, nickname: nickname || c.name } : c)),
         myClassChildren: prev.myClassChildren?.map((c) => (c.id === userId ? { ...c, nickname: nickname || c.name } : c)),
         teacher: prev.teacher.id === userId ? { ...prev.teacher, nickname: nickname || undefined } : prev.teacher,
@@ -640,6 +649,7 @@ export function DashboardStoreProvider({
           ...prev,
           me: prev.me && applyChild(prev.me),
           myChild: prev.myChild && applyChild(prev.myChild),
+          myChildren: prev.myChildren?.map(applyChild),
           classChildren: prev.classChildren.map(applyChild),
           myClassChildren: prev.myClassChildren?.map(applyChild),
           teacher: applyTeacher(prev.teacher),
@@ -855,9 +865,51 @@ export function DashboardStoreProvider({
 // ---- 로딩 헬퍼 ----
 
 /** 이 역할이 리포트·알림장을 볼 수 있는 아이 목록입니다. 서버도 같은 기준으로 한 번 더 검사합니다. */
-function childrenVisibleTo(role: DashboardData["role"], snapshot: ReturnType<typeof buildMemberSnapshot>): ChildRecord[] {
+/**
+ * 볼 수 있는 아이들의 나이·성별을 프로필에서 채워 넣습니다.
+ *
+ * 관계(RelationshipDTO)에는 이 값들이 없어서 `ChildRecord.age`/`gender`가 오래 비어
+ * 있었습니다. `user/info?userId=`가 열리면서 채울 수 있게 됐지만, 한 명당 요청 하나라
+ * 아이 수만큼 나갑니다. 실패는 삼킵니다 — 선택 필드이고, 교사 시점에서는 볼 권한이 없는
+ * 아이가 섞일 수 있어 한 명 때문에 워크스페이스 전체가 비면 안 됩니다.
+ */
+async function applyChildProfiles(
+  role: DashboardData["role"],
+  snapshot: MemberSnapshot,
+): Promise<MemberSnapshot> {
+  const targets = childrenVisibleTo(role, snapshot);
+  if (targets.length === 0) return snapshot;
+
+  const profiles = await fetchChildProfiles(targets.map((c) => c.id)).catch(
+    (): Record<string, PlainUserDTO> => ({}),
+  );
+  if (Object.keys(profiles).length === 0) return snapshot;
+
+  const enrich = <T extends ChildRecord>(child: T): T => {
+    const profile = profiles[child.id];
+    if (!profile) return child;
+    return {
+      ...child,
+      age: ageFromBirthDate(profile.birthDate) ?? child.age,
+      // 서버는 UNSPECIFIED도 돌려주는데 화면 타입은 남/여뿐이라 그건 비워 둡니다.
+      gender: profile.gender === "MALE" ? "male" : profile.gender === "FEMALE" ? "female" : child.gender,
+    };
+  };
+
+  return {
+    ...snapshot,
+    me: snapshot.me && enrich(snapshot.me),
+    myChild: snapshot.myChild && enrich(snapshot.myChild),
+    myChildren: snapshot.myChildren?.map(enrich),
+    myClassChildren: snapshot.myClassChildren?.map(enrich),
+    classChildren: snapshot.classChildren.map(enrich),
+  };
+}
+
+function childrenVisibleTo(role: DashboardData["role"], snapshot: MemberSnapshot): ChildRecord[] {
   if (role === "child") return snapshot.me ? [snapshot.me] : [];
-  if (role === "parent") return snapshot.myChild ? [snapshot.myChild] : [];
+  // 아이가 둘 이상인 부모도 있습니다. myChild(첫째)만 보면 둘째의 리포트·알림장이 로드되지 않습니다.
+  if (role === "parent") return snapshot.myChildren ?? [];
   if (role === "teacher") return snapshot.myClassChildren ?? [];
   return snapshot.classChildren;
 }

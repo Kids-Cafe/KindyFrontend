@@ -1,9 +1,7 @@
-import { useState } from "react";
-import {
-  X, LogOut, Bell, Shield, Baby, ChevronRight, Check,
-  ArrowLeft, UserCircle, KeyRound, MapPin, School, UserX, Phone, Link2,
-} from "lucide-react";
+import { useMemo, useState } from "react";
+import { X, LogOut, ChevronRight, Check, ArrowLeft } from "lucide-react";
 import { useAuth } from "@/app/auth/AuthContext";
+import { isChildAccount } from "@/app/auth/accountType";
 import { changePassword, verifyCurrentPassword } from "@/app/auth/password";
 import { requestJoinKindergarten, searchKindergartens } from "@/app/auth/kindergartenSearch";
 import { registerKindergarten } from "@/app/auth/signup";
@@ -18,23 +16,16 @@ import { useDisplayName } from "@/app/auth/useDisplayName";
 import { openAddressSearch } from "@/app/auth/addressSearch";
 import { useDashboardStoreOptional } from "@/app/dashboard/DashboardStoreContext";
 import { useChildVoiceSettings } from "@/app/dashboard/childVoiceSettings";
-
-type MenuKey =
-  | "nickname" | "password" | "address" | "kindergartenClass" | "notifications"
-  | "childInfo" | "linkedAccounts" | "phone" | "personalInfo" | "withdraw";
-
-const MENU_ITEMS: { key: MenuKey; icon: typeof Baby; label: string; hint: string }[] = [
-  { key: "nickname", icon: UserCircle, label: "별칭 변경", hint: "유치원에서 보여질 이름" },
-  { key: "password", icon: KeyRound, label: "비밀번호 재설정", hint: "계정 보안 설정" },
-  { key: "address", icon: MapPin, label: "주소 변경", hint: "우편번호 · 상세주소" },
-  { key: "kindergartenClass", icon: School, label: "유치원 및 소속반 변경", hint: "소속 기관/반 정보" },
-  { key: "childInfo", icon: Baby, label: "우리 아이 정보", hint: "이름 · 생년월일 · 관심사" },
-  { key: "notifications", icon: Bell, label: "알림 설정", hint: "공지 · 일정 · 채팅 알림" },
-  { key: "linkedAccounts", icon: Link2, label: "연동된 계정 보기", hint: "소셜 로그인 연동 현황" },
-  { key: "phone", icon: Phone, label: "전화번호 변경", hint: "연락처 정보" },
-  { key: "personalInfo", icon: Shield, label: "개인정보 확인", hint: "이름 · 이메일" },
-  { key: "withdraw", icon: UserX, label: "회원 탈퇴", hint: "계정 삭제 및 로그아웃" },
-];
+import { useMyFamily, type MyFamily } from "@/app/dashboard/useMyFamily";
+import { ChildAccountsPanel } from "@/app/sections/ChildAccountsPanel";
+import { visibleMenuItems, type MenuKey } from "@/app/sections/mypageMenu";
+import {
+  FieldLabel,
+  PasswordConfirmField,
+  SaveButton,
+  TextField,
+  Toast,
+} from "@/app/sections/mypageFields";
 
 function formatJoinedAt(iso: string): string {
   const date = new Date(iso);
@@ -42,94 +33,21 @@ function formatJoinedAt(iso: string): string {
   return `${date.getFullYear()}년 ${date.getMonth() + 1}월 ${date.getDate()}일`;
 }
 
-function FieldLabel({ children }: { children: React.ReactNode }) {
-  return <p className="text-xs font-bold mb-1.5" style={{ color: "#6B7280" }}>{children}</p>;
-}
-
-function TextField({ value, onChange, placeholder, readOnly }: { value: string; onChange?: (v: string) => void; placeholder?: string; readOnly?: boolean }) {
-  return (
-    <input
-      value={value}
-      readOnly={readOnly}
-      onChange={(e) => onChange?.(e.target.value)}
-      placeholder={placeholder}
-      className="w-full rounded-2xl px-4 py-3 text-sm outline-none"
-      style={{ background: readOnly ? "#F9FAFB" : "var(--input-background)", border: "1.5px solid #F3F4F6", color: "#1F0A3C" }}
-    />
-  );
-}
-
-function SaveButton({
-  onClick,
-  label = "저장하기",
-  disabled = false,
-}: {
-  onClick: () => void;
-  label?: string;
-  /** 비밀번호 확인처럼 시간이 걸리는 처리 중에 중복 클릭을 막습니다. */
-  disabled?: boolean;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      aria-busy={disabled}
-      className="w-full rounded-2xl font-bold text-sm text-white transition-all active:scale-[0.98] disabled:opacity-60 disabled:active:scale-100"
-      style={{ height: 48, background: "linear-gradient(135deg,#E879A0,#F472B6)" }}
-    >
-      {disabled ? "확인 중…" : label}
-    </button>
-  );
-}
-
-/** 정보 변경 전에 본인 확인용 현재 비밀번호를 받는 공용 입력란입니다. 이메일 계정에서만 표시됩니다. */
-function PasswordConfirmField({
-  show,
-  value,
-  onChange,
-  error,
-}: {
-  show: boolean;
-  value: string;
-  onChange: (v: string) => void;
-  error: string | null;
-}) {
-  if (!show) return null;
-  return (
-    <div>
-      <FieldLabel>현재 비밀번호 확인</FieldLabel>
-      <input
-        type="password"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder="변경하려면 비밀번호를 입력하세요"
-        className="w-full rounded-2xl px-4 py-3 text-sm outline-none"
-        style={{ background: "var(--input-background)", border: "1.5px solid #F3F4F6", color: "#1F0A3C" }}
-      />
-      {error && <p className="text-xs mt-1.5 font-bold" style={{ color: "#EF4444" }}>{error}</p>}
-    </div>
-  );
-}
-
-function Toast({ message }: { message: string | null }) {
-  if (!message) return null;
-  return (
-    <div className="fixed left-1/2 bottom-6 -translate-x-1/2 z-[9999] px-4 py-2.5 rounded-full text-xs font-bold text-white" style={{ background: "#1F0A3C" }}>
-      {message}
-    </div>
-  );
-}
-
 /** 마이페이지 서브패널 콘텐츠입니다. 실제 계정 설정 화면처럼 각 항목을 별도 화면으로 분리했습니다. */
 function MyPagePanel({
   panel,
   onDone,
   onMembershipsChanged,
+  family,
+  visible,
 }: {
   panel: MenuKey;
   onDone: (message?: string) => void;
   /** 소속 유치원 목록이 달라졌을 때(직접 등록 등) 대시보드가 다시 받아오도록 알립니다. */
   onMembershipsChanged?: () => void;
+  family: MyFamily;
+  /** 이 계정에서 이 패널이 열려도 되는지. 목록 필터와 같은 술어입니다. */
+  visible: boolean;
 }) {
   const { user, updateProfile, logout } = useAuth();
   const store = useDashboardStoreOptional();
@@ -147,7 +65,6 @@ function MyPagePanel({
   const [address, setAddress] = useState(user?.address ?? "");
   const [addressDetail, setAddressDetail] = useState(user?.addressDetail ?? "");
   const [phone, setPhone] = useState(user?.phone ?? "");
-  const [childNickname, setChildNickname] = useState(store?.data.myChild?.nickname ?? "");
   const [kinderQuery, setKinderQuery] = useState("");
   const [kinderResults, setKinderResults] = useState<KindergartenInfo[]>([]);
   /** 유치원 검색 아래의 "직접 등록" 폼을 펼쳤는지. 기본은 접어 두고 검색을 먼저 권합니다. */
@@ -158,6 +75,13 @@ function MyPagePanel({
   const [notifyChat, setNotifyChat] = useState(true);
 
   if (!user) return null;
+
+  // 목록에서 이미 걸렀지만, 열려 있던 패널이 남아 있거나 나중에 딥링크가 생겨도 새지 않도록
+  // 한 번 더 봅니다. 어차피 서버가 거절할 요청이라 보안 경계는 아니고, 아무것도 못 하는
+  // 화면을 보여 주지 않기 위한 것입니다.
+  if (!visible) {
+    return <p className="text-sm" style={{ color: "#6B7280" }}>이 계정에서는 쓸 수 없는 설정이에요.</p>;
+  }
 
   /**
    * 이메일 계정은 저장 전에 현재 비밀번호를 확인합니다. 소셜 계정은 비밀번호가 없어 바로 저장합니다.
@@ -446,28 +370,9 @@ function MyPagePanel({
       );
 
     case "childInfo":
-      if (!store?.data.myChild) {
-        return <p className="text-sm" style={{ color: "#6B7280" }}>등록된 자녀 정보가 없어요.</p>;
-      }
-      return (
-        <div className="space-y-4">
-          <FieldLabel>아이 별칭</FieldLabel>
-          <TextField value={childNickname} onChange={setChildNickname} />
-          <FieldLabel>나이</FieldLabel>
-          {/* 나이는 아이 계정 프로필에만 있어 멤버 목록에서는 알 수 없습니다. */}
-          <TextField value={store.data.myChild.age ? `${store.data.myChild.age}세` : "-"} readOnly />
-          <FieldLabel>소속 반</FieldLabel>
-          <TextField value={store.data.myChild.className} readOnly />
-          <PasswordConfirmField show={user.provider === "email"} value={pwConfirm} onChange={(v) => { setPwConfirm(v); setPwError(null); }} error={pwError} />
-          <SaveButton
-            disabled={isVerifying}
-            onClick={() => void requirePassword(async () => {
-              await store.updateChildNickname(store.data.myChild!.id, childNickname);
-              onDone("아이 정보가 변경되었어요");
-            })}
-          />
-        </div>
-      );
+      // 별칭 편집은 여기 있지 않습니다 — 별칭은 가족이 아니라 유치원 관계에 붙는 값이라
+      // 원장·교사 화면(DirectorStudentPanel, MemberProfilePanel)의 몫입니다.
+      return <ChildAccountsPanel family={family} onDone={onDone} />;
 
     case "linkedAccounts":
       return (
@@ -506,20 +411,43 @@ function MyPagePanel({
         </div>
       );
 
-    case "personalInfo":
+    case "personalInfo": {
       // 실명과 이메일은 가입할 때 확정됩니다. 유치원에서 불리는 이름을 바꾸려면 "별칭 변경"으로 갑니다.
+      // 아이 계정은 이메일이 없어(서버 CHECK 제약) 빈 칸이 나오므로, 대신 아이 계정에만 있는
+      // 값들을 보여줍니다. 이 값들을 고치는 건 아이 자신이 아니라 보호자의 "우리 아이 정보"입니다.
+      const isChild = isChildAccount(user);
       return (
         <div className="space-y-4">
           <FieldLabel>이름</FieldLabel>
           <TextField value={user.name} readOnly />
-          <FieldLabel>이메일</FieldLabel>
-          <TextField value={user.email} readOnly />
-          <p className="text-xs leading-relaxed" style={{ color: "#9CA3AF" }}>
-            이름과 이메일은 가입할 때 확인한 정보라 바꿀 수 없어요.
-            다른 사람에게 보여질 이름은 "별칭 변경"에서 유치원마다 따로 정할 수 있어요.
-          </p>
+          {isChild ? (
+            <>
+              <FieldLabel>아이디</FieldLabel>
+              <TextField value={user.loginId ?? user.id} readOnly />
+              <FieldLabel>생년월일</FieldLabel>
+              <TextField value={user.birthDate ?? "-"} readOnly />
+              <FieldLabel>보호자</FieldLabel>
+              <TextField value={user.guardianName ?? "-"} readOnly />
+              <FieldLabel>보호자 연락처</FieldLabel>
+              <TextField value={user.guardianPhone ?? "-"} readOnly />
+              <p className="text-xs leading-relaxed" style={{ color: "#9CA3AF" }}>
+                여기 있는 정보는 보호자가 고칠 수 있어요.
+                다른 사람에게 보여질 이름은 "별칭 변경"에서 유치원마다 따로 정할 수 있어요.
+              </p>
+            </>
+          ) : (
+            <>
+              <FieldLabel>이메일</FieldLabel>
+              <TextField value={user.email} readOnly />
+              <p className="text-xs leading-relaxed" style={{ color: "#9CA3AF" }}>
+                이름과 이메일은 가입할 때 확인한 정보라 바꿀 수 없어요.
+                다른 사람에게 보여질 이름은 "별칭 변경"에서 유치원마다 따로 정할 수 있어요.
+              </p>
+            </>
+          )}
         </div>
       );
+    }
 
     case "withdraw":
       return (
@@ -558,8 +486,22 @@ export function MyPage({
 }) {
   const { user, logout } = useAuth();
   const displayName = useDisplayName();
+  const family = useMyFamily();
   const [activePanel, setActivePanel] = useState<MenuKey | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+
+  const isChild = isChildAccount(user);
+  const hasGuardian = family.guardianIds.length > 0;
+
+  /**
+   * 아직 불러오는 중이면 보호자가 있다고 봅니다. 탈퇴 항목이 보였다가 사라지는 것보다
+   * 한 박자 늦게 나타나는 편이 낫습니다 — 사라지는 쪽은 눌러도 되는 걸 눌렀다가 빼앗긴
+   * 것처럼 보입니다.
+   */
+  const menuItems = useMemo(
+    () => visibleMenuItems({ isChild, hasGuardian: family.isLoading || hasGuardian }),
+    [isChild, hasGuardian, family.isLoading],
+  );
 
   if (!user) return null;
 
@@ -577,7 +519,9 @@ export function MyPage({
     onClose();
   };
 
-  const activeMeta = MENU_ITEMS.find((m) => m.key === activePanel);
+  // 헤더 라벨은 렌더에 쓴 것과 같은 배열에서 찾아야 합니다. 원본 MENU_ITEMS에서 찾으면
+  // 숨긴 패널이 열렸을 때 제목만 멀쩡해 보입니다.
+  const activeMeta = menuItems.find((m) => m.key === activePanel);
 
   return (
     <div className="fixed inset-0 z-[9000] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="마이페이지">
@@ -593,7 +537,13 @@ export function MyPage({
               <p className="font-bold text-base" style={{ color: "#1F0A3C" }}>{activeMeta?.label}</p>
             </div>
             <div className="px-6 py-6">
-              <MyPagePanel panel={activePanel} onDone={showToast} onMembershipsChanged={onMembershipsChanged} />
+              <MyPagePanel
+                panel={activePanel}
+                onDone={showToast}
+                onMembershipsChanged={onMembershipsChanged}
+                family={family}
+                visible={activeMeta !== undefined}
+              />
             </div>
           </>
         ) : (
@@ -606,7 +556,8 @@ export function MyPage({
                 <UserAvatar user={user} size={64} />
                 <div className="min-w-0">
                   <p className="text-xl font-bold text-white truncate" style={{ fontFamily: "'Fredoka',sans-serif" }}>{displayName}</p>
-                  <p className="text-sm truncate" style={{ color: "rgba(255,255,255,0.8)" }}>{user.email}</p>
+                  {/* 아이 계정은 이메일이 없어 이 줄이 비어 버립니다. 그때는 아이디를 보여줍니다. */}
+                  <p className="text-sm truncate" style={{ color: "rgba(255,255,255,0.8)" }}>{user.email || user.loginId || user.id}</p>
                   <p className="text-xs mt-1" style={{ color: "rgba(255,255,255,0.65)" }}>{formatJoinedAt(user.joinedAt)}부터 함께하는 중</p>
                 </div>
               </div>
@@ -615,7 +566,7 @@ export function MyPage({
             <div className="px-7 pt-6">
               <p className="text-xs font-bold mb-2" style={{ color: "#6B7280" }}>설정</p>
               <div className="rounded-2xl overflow-hidden" style={{ border: "1.5px solid #F3F4F6" }}>
-                {MENU_ITEMS.map((item, index) => (
+                {menuItems.map((item, index) => (
                   <button
                     key={item.key}
                     onClick={() => setActivePanel(item.key)}

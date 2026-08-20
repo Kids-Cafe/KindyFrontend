@@ -326,8 +326,10 @@ export interface DashboardData {
   myNickname?: string;
   /** 로그인한 사람 본인이 "아이"일 때만 채워집니다. */
   me?: ChildRecord;
-  /** 로그인한 사람이 "부모"일 때 본인 아이입니다. */
+  /** 로그인한 사람이 "부모"일 때, 화면이 기준으로 삼는 아이입니다. 여럿이면 `myChildren[0]`입니다. */
   myChild?: ChildRecord;
+  /** 이 유치원에 다니는 내 아이 전부입니다. 리포트·알림장은 이 목록 전체를 받아옵니다. */
+  myChildren?: ChildRecord[];
   /** 로그인한 사람이 "선생님"일 때 담당 학급입니다. */
   myClassChildren?: ChildRecord[];
   teacher: TeacherRecord;

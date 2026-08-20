@@ -36,6 +36,20 @@ export function avatarFor(id: string): { avatarEmoji: string; avatarColor: strin
   };
 }
 
+/** 생년월일에서 만 나이를 셉니다. 서버는 나이를 내려주지 않고 BIRTH_DATE만 갖고 있습니다. */
+export function ageFromBirthDate(birthDate?: string): number | undefined {
+  if (!birthDate) return undefined;
+  const born = new Date(birthDate);
+  if (Number.isNaN(born.getTime())) return undefined;
+  const now = new Date();
+  let age = now.getFullYear() - born.getFullYear();
+  const beforeBirthday =
+    now.getMonth() < born.getMonth() ||
+    (now.getMonth() === born.getMonth() && now.getDate() < born.getDate());
+  if (beforeBirthday) age -= 1;
+  return age >= 0 ? age : undefined;
+}
+
 /** 아직 아무 카테고리도 저장되지 않은 아이의 리포트입니다. 화면이 빈 상태를 그릴 수 있게 뼈대를 채웁니다. */
 export function emptyChildReports(): ChildReports {
   return {
@@ -154,7 +168,10 @@ export interface MemberSnapshot {
   /** 로그인한 사람이 이 유치원에서 앉는 "교사 자리"입니다. */
   teacher: TeacherRecord;
   me?: ChildRecord;
+  /** 화면이 기준으로 삼는 아이입니다. 여럿이면 `myChildren[0]`과 같습니다. */
   myChild?: ChildRecord;
+  /** 이 유치원에 다니는, 로그인한 사람의 아이 전부입니다. */
+  myChildren?: ChildRecord[];
   myClassChildren?: ChildRecord[];
   /** 이 유치원에서 로그인한 사람이 쓰는 별칭입니다. 정하지 않았으면 undefined입니다. */
   myNickname?: string;
@@ -193,7 +210,11 @@ export function buildMemberSnapshot(
   }
 
   const me = role === "child" ? classChildren.find((c) => c.id === user.id) : undefined;
-  const myChild = role === "parent" ? classChildren.find((c) => childIdsOfUser.has(c.id)) : undefined;
+  // 한 부모에게 아이가 여럿일 수 있습니다. 첫째만 잡으면 둘째의 리포트·알림장이 아예
+  // 로드되지 않아서, 목록을 만들고 `myChild`는 그 첫 번째로 둡니다 — 기존 화면 15곳이
+  // 단수 필드를 읽고 있어 필드를 없애지 않고 덧붙입니다.
+  const myChildren = role === "parent" ? classChildren.filter((c) => childIdsOfUser.has(c.id)) : undefined;
+  const myChild = myChildren?.[0];
 
   // 로그인한 본인이 교사/원장이면 자기 멤버십이 곧 "교사 자리"입니다.
   // 학부모·아이 화면에서는 우리 반 담임이 그 자리에 앉습니다.
@@ -220,6 +241,7 @@ export function buildMemberSnapshot(
     myNickname,
     me,
     myChild,
+    myChildren,
     myClassChildren:
       role === "teacher" && teacher.classId !== undefined
         ? classChildren.filter((c) => c.classId === teacher.classId)
