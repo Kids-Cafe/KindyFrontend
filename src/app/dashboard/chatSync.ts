@@ -204,12 +204,13 @@ export async function transcribeAudio(blob: Blob, mimeType = blob.type): Promise
  *
  * 소리가 나지 않는다고 대화가 막히면 안 되므로 실패는 `null`입니다.
  *
- * `partner`는 지금 서버가 쓰지 않습니다 — 목소리 모델이 하나뿐이라 키오와 키나가 같은
- * 소리로 들립니다. 나중에 갈라질 때 이 화면을 다시 고치지 않으려고 미리 넘겨 둡니다.
+ * `partner`는 목소리를 고릅니다 — 캐릭터별 말 빠르기와 음높이, 그리고 그 캐릭터용 음성
+ * 모델이 배포에 설정돼 있으면 그 모델까지. 보내지 않으면 예전과 같은 중립적인 목소리로
+ * 읽습니다.
  */
 export async function speakAssistant(
   text: string,
-  options: { partner?: string; signal?: AbortSignal } = {},
+  options: { partner?: AIPartnerId; signal?: AbortSignal } = {},
 ): Promise<Blob | null> {
   if (!text.trim()) return null;
   try {

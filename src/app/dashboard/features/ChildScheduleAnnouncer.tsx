@@ -18,6 +18,18 @@ function formatDate(dateStr: string): string {
 }
 
 /**
+ * 캐릭터별 목소리입니다(브라우저 SpeechSynthesis 기준: `pitch`·`rate` 모두 1이 기본).
+ *
+ * 여기는 서버를 거치지 않는 유일한 음성 경로라 숫자를 따로 듭니다. 서버 쪽 값
+ * (`ChatDTO.Partner`의 speed·pitchShift)과 **결이 같게** 맞춰 두었습니다 — 키오는 조금
+ * 빠르고 낮게, 키나는 조금 느리고 높게. 한쪽을 손보면 다른 쪽도 함께 보세요.
+ */
+const PARTNER_VOICE: Record<AIPartnerId, { pitch: number; rate: number }> = {
+  kio: { pitch: 1.0, rate: 1.05 },
+  kina: { pitch: 1.25, rate: 0.95 },
+};
+
+/**
  * 아이 대시보드에 마운트되어, 다가오는(3일 이내) 일정이 있으면 AI 파트너 캐릭터가
  * 말풍선으로 알려줍니다. 설정에서 음성알림이 켜져 있으면 SpeechSynthesis로 짧게 읽어줍니다.
  */
@@ -45,10 +57,16 @@ export function ChildScheduleAnnouncer({ childId, userId, partner }: { childId: 
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = "ko-KR";
     utterance.volume = settings.volume;
+    // 말하는 사람은 채팅과 같은 그 캐릭터입니다. 파트너를 아직 고르지 않았으면 기본
+    // 목소리 그대로 둡니다 — 누구의 것도 아닌 소리가 맞습니다.
+    if (partner) {
+      utterance.pitch = PARTNER_VOICE[partner].pitch;
+      utterance.rate = PARTNER_VOICE[partner].rate;
+    }
     window.speechSynthesis.cancel(); // 앞서 읽던 게 남아 있으면 겹칩니다.
     window.speechSynthesis.speak(utterance);
     return true;
-  }, [upcoming, canSpeak, userId]);
+  }, [upcoming, canSpeak, partner, userId]);
 
   // 자동 재생 시도입니다. iOS Safari는 사용자 조작 없이 호출한 speak()를 조용히 무시하므로
   // 여기서 소리가 나지 않을 수 있습니다. 그래서 아래에 직접 누를 수 있는 버튼을 함께 둡니다.
