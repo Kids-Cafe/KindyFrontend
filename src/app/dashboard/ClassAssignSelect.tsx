@@ -80,7 +80,8 @@ export function ClassAssignSelect({ userId, classId }: { userId: string; classId
           </button>
         </PopoverTrigger>
 
-        <PopoverContent className="w-[--radix-popover-trigger-width] min-w-56 p-0" align="start">
+        {/* 너비는 트리거에 맞춥니다. Tailwind v4에서 CSS 변수는 `w-[--var]`가 아니라 `w-(--var)`입니다. */}
+        <PopoverContent className="w-(--radix-popover-trigger-width) min-w-56 p-0" align="start">
           <Command>
             <CommandInput placeholder="반 이름으로 찾기" className="text-xs" />
             <CommandList>
