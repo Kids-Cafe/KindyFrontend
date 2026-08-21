@@ -1,6 +1,6 @@
 import { apiGet, apiPost, apiPostBinary, apiUpload } from "@/app/lib/api";
 import type { ChatDTO, ChatMessageDTO, ChatMessageType } from "@/app/lib/dto";
-import type { ChatMessage, ChatSender, DataCardType } from "@/app/dashboard/types";
+import type { AIPartnerId, ChatMessage, ChatSender, DataCardType } from "@/app/dashboard/types";
 
 /**
  * 백엔드 채팅(`/api/chat/*`)과 화면의 대화창을 잇습니다.
@@ -141,19 +141,23 @@ export async function sendChatMessage(
  * `GENERATION_FAILED`를 던지면서 `sent`만 채운 데이터를 함께 주는데, `apiPost`는 봉투가
  * error면 데이터를 버리고 던지므로 여기서는 `reply`가 없는 것으로만 구분합니다 —
  * 호출부는 "말은 남았고 답만 못 받았다"로 다루면 됩니다.
+ *
+ * `partner`(키오/키나)는 서버가 모델에게 줄 **성격 지시문**을 고릅니다. 아이가 고른 값은
+ * 이 기기에만 있으므로(`aiPartnerChoice`) 청할 때마다 함께 보냅니다. 보내지 않거나 서버가
+ * 모르는 이름이면 기본 캐릭터로 답합니다 — 대화가 끊기는 것보다 낫습니다.
  */
 export interface ChatTurn {
   sent: ChatMessageDTO;
   reply?: ChatMessageDTO;
 }
 
-export async function sayToAssistant(chatId: number, content: string): Promise<ChatTurn> {
-  return apiPost<ChatTurn>("/api/chat/say", { chatId, content });
+export async function sayToAssistant(chatId: number, content: string, partner?: AIPartnerId): Promise<ChatTurn> {
+  return apiPost<ChatTurn>("/api/chat/say", { chatId, content, partner });
 }
 
 /** 이미 보낸 말에 대해 답변만 다시 요청합니다("다시 물어보기"). */
-export async function requestAiReply(chatId: number): Promise<ChatMessageDTO> {
-  return apiPost<ChatMessageDTO>("/api/chat/request", { chatId });
+export async function requestAiReply(chatId: number, partner?: AIPartnerId): Promise<ChatMessageDTO> {
+  return apiPost<ChatMessageDTO>("/api/chat/request", { chatId, partner });
 }
 
 /**

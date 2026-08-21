@@ -10,6 +10,7 @@ import type {
   TeacherRecord,
 } from "@/app/dashboard/types";
 import { toTeacherRecords } from "@/app/dashboard/backendSync";
+import { loadAiPartner } from "@/app/dashboard/aiPartnerChoice";
 
 /**
  * 대시보드 데이터의 뼈대를 만듭니다.
@@ -157,8 +158,9 @@ function toChildRecord(
     kindergartenName: kindergarten.name,
     parents: parentsByChildId.get(relationship.userId) ?? [],
     teacherId: teachers.find((t) => t.classId === relationship.classId)?.id,
-    // AI 파트너 선택은 서버에 저장되는 값이 아닙니다(백엔드에 칼럼 없음).
-    aiPartner: null,
+    // AI 파트너 선택은 서버에 저장되는 값이 아니라 이 기기의 localStorage에 있습니다
+    // (백엔드에 칼럼 없음). 그래서 본인 것만 살아 돌아오고, 반 친구들 것은 null입니다.
+    aiPartner: loadAiPartner(relationship.userId),
     ...avatarFor(relationship.userId),
   };
 }

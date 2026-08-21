@@ -78,6 +78,7 @@ import {
   sendChatMessage,
 } from "@/app/dashboard/chatSync";
 import type { ChatParticipants } from "@/app/dashboard/chatSync";
+import { loadAiPartner, saveAiPartner } from "@/app/dashboard/aiPartnerChoice";
 import { newId } from "@/app/lib/id";
 
 /** 지금 로그인된 사람이 오갈 수 있는 "서버"(유치원) 단위 워크스페이스입니다. */
@@ -721,7 +722,9 @@ export function DashboardStoreProvider({
   // ---- 채팅 ----
   const choosePartner = useCallback(
     (childId: string, partner: AIPartnerId) => {
-      // AI 파트너 선택은 백엔드에 저장할 칼럼이 없어 화면 상태로만 남습니다.
+      // AI 파트너 선택은 백엔드에 저장할 칼럼이 없어 이 기기에 남깁니다. 저장해 두지
+      // 않으면 새로고침마다 고르는 화면으로 되돌아갑니다.
+      saveAiPartner(childId, partner);
       setData((prev) => {
         const updateChild = (c: ChildRecord) => (c.id === childId ? { ...c, aiPartner: partner } : c);
         return {
@@ -758,11 +761,27 @@ export function DashboardStoreProvider({
     return next;
   }, []);
 
+  /**
+   * 이 아이가 고른 파트너입니다. 이름표(말풍선)와 서버에 보낼 성격 지시문이 같은 값을
+   * 쓰도록 한곳에서 정합니다.
+   *
+   * 화면 상태가 아직 없을 수 있어(새로고침 직후 등) 저장된 값을 마지막으로 한 번 더
+   * 들여다보고, 그래도 없으면 기본 캐릭터로 답하게 둡니다.
+   */
+  const partnerFor = useCallback(
+    (childId: string): AIPartnerId =>
+      data?.classChildren.find((c) => c.id === childId)?.aiPartner ??
+      data?.me?.aiPartner ??
+      loadAiPartner(childId) ??
+      "kio",
+    [data],
+  );
+
   /** 서버가 준 대화 기록으로 화면을 통째로 맞춥니다(임시 말풍선은 이때 사라집니다). */
   const reconcileAiThread = useCallback(
     async (childId: string, chatId: number) => {
       if (!data) return;
-      const partner = data.classChildren.find((c) => c.id === childId)?.aiPartner ?? data.me?.aiPartner ?? "kio";
+      const partner = partnerFor(childId);
       const messages = await fetchChatMessages(selfChat(chatId, childId, data.kindergarten.id), {
         nameById: { [childId]: data.me?.nickname ?? "나" },
         senderById: { [childId]: "child" },
@@ -773,7 +792,7 @@ export function DashboardStoreProvider({
         aiThreadsByChild: { ...prev.aiThreadsByChild, [childId]: { childId, chatId, messages } },
       }));
     },
-    [data, setData],
+    [data, partnerFor, setData],
   );
 
   const sendAiMessage = useCallback(
@@ -814,7 +833,7 @@ export function DashboardStoreProvider({
         try {
           const chat = await ensureAiChat(kindergartenId, childId);
           chatId = chat.id;
-          const turn = await sayToAssistant(chat.id, trimmed);
+          const turn = await sayToAssistant(chat.id, trimmed, partnerFor(childId));
           await reconcileAiThread(childId, chat.id);
           return turn.reply?.content ?? null;
         } catch (cause) {
@@ -830,7 +849,7 @@ export function DashboardStoreProvider({
         }
       });
     },
-    [data, setData, runQueued, reconcileAiThread],
+    [data, setData, runQueued, reconcileAiThread, partnerFor],
   );
 
   const retryAiReply = useCallback(
@@ -842,7 +861,7 @@ export function DashboardStoreProvider({
       return runQueued(childId, async () => {
         setAiTyping((prev) => ({ ...prev, [childId]: true }));
         try {
-          const reply = await requestAiReply(chatId);
+          const reply = await requestAiReply(chatId, partnerFor(childId));
           await reconcileAiThread(childId, chatId);
           setAiReplyFailed((prev) => ({ ...prev, [childId]: false }));
           return reply?.content ?? null;
@@ -855,7 +874,7 @@ export function DashboardStoreProvider({
         }
       });
     },
-    [data, runQueued, reconcileAiThread],
+    [data, runQueued, reconcileAiThread, partnerFor],
   );
 
   const sendThreadMessage = useCallback(
