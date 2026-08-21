@@ -39,14 +39,39 @@ function mapDiary(dto: DiaryDTO, childId: string): DiaryEntry {
 }
 
 /**
- * 로그인한 본인의 일기 전체입니다.
+ * 한 사람의 일기 전체입니다.
  *
- * ⚠️ 백엔드에는 "남의 일기 목록"을 받는 엔드포인트가 없습니다(`diary/list`는 세션 사용자
- * 고정, `diary/info`는 날짜 하나씩). 그래서 부모/교사 화면에서 아이의 일기를 통째로
- * 보여줄 수는 없고, 날짜를 특정해 `fetchDiaryByDate`로 한 편씩만 열 수 있습니다.
+ * `userId`를 생략하면 로그인한 본인 것이고, 아이의 것을 받으려면 열람 권한(본인·보호자·
+ * 다니는 유치원의 교사)이 있어야 합니다 — 리포트·알림장과 같은 기준입니다.
  */
-export async function fetchMyDiaries(userId: string): Promise<DiaryEntry[]> {
-  const list = await apiGet<DiaryDTO[]>("/api/user/diary/list");
+export async function fetchDiaries(userId: string): Promise<DiaryEntry[]> {
+  const list = await apiGet<DiaryDTO[]>("/api/user/diary/list", { userId });
+  return list.map((dto) => mapDiary(dto, userId));
+}
+
+/**
+ * AI 파트너와의 대화를 일기로 옮깁니다.
+ *
+ * 날짜를 주지 않으면 최근 날짜부터, **아직 일기가 없는 날**과 **일기를 쓴 뒤로 대화가
+ * 이어진 날**을 함께 정리합니다(한 번에 최대 7일 — 나머지는 다음 호출이 이어받습니다).
+ * 뒤엣것이 오늘의 일기가 오전에서 멈추지 않게 하는 부분입니다.
+ *
+ * 건드리지 않는 것: 사람이 직접 쓰거나 고친 일기(서버가 `SOURCE_AT`으로 구분합니다),
+ * 그리고 대화가 너무 적었던 날 — 빈 일기를 만들지 않고 그냥 건너뜁니다. 그래서
+ * **빈 배열은 오류가 아니라 "정리할 것이 없었다"입니다.**
+ *
+ * `force`는 날짜를 특정했을 때만 의미가 있고, 사람이 쓴 일기까지 덮어 다시 씁니다.
+ * 모델이 느리거나 죽어 있으면 `GENERATION_FAILED`로 던집니다.
+ */
+export async function generateDiaries(
+  userId: string,
+  options: { date?: string; force?: boolean } = {},
+): Promise<DiaryEntry[]> {
+  const list = await apiPost<DiaryDTO[]>("/api/user/diary/generate", {
+    userId,
+    date: options.date,
+    force: options.force ? "true" : undefined,
+  });
   return list.map((dto) => mapDiary(dto, userId));
 }
 
@@ -75,12 +100,12 @@ export async function saveDiaryOnServer(userId: string, draft: DiaryDraft, isNew
     // 서버는 콤마로 구분된 한 문자열로 받습니다.
     tags: draft.tags?.join(","),
   });
-  return fetchMyDiaries(userId);
+  return fetchDiaries(userId);
 }
 
 export async function deleteDiaryOnServer(userId: string, date: string): Promise<DiaryEntry[]> {
   await apiPost("/api/user/diary/delete", { date });
-  return fetchMyDiaries(userId);
+  return fetchDiaries(userId);
 }
 
 // ---- Reports ----

@@ -62,10 +62,11 @@ import {
   createParentNoteOnServer,
   fetchChildProfiles,
   fetchChildReports,
+  fetchDiaries,
   fetchFamilies,
   fetchGuardiansOf,
-  fetchMyDiaries,
   fetchParentNotes,
+  generateDiaries,
 } from "@/app/dashboard/userSync";
 import {
   ensureAiChat,
@@ -156,6 +157,18 @@ interface DashboardStoreValue {
   addPhoto: (file: File, uploadedBy: string, classId: number, theme: PhotoThemeId, caption?: string) => void;
   updatePhotoTheme: (photoId: number, theme: PhotoThemeId) => void;
   deletePhoto: (photoId: number) => void;
+
+  /**
+   * AI 파트너와의 대화를 일기로 옮기고, 이번에 정리된 편수를 답합니다.
+   *
+   * 아직 일기가 없는 날뿐 아니라 **일기를 쓴 뒤로 대화가 이어진 날도 다시 씁니다** — 오늘의
+   * 일기는 하루가 끝나기 전에 쓰이므로, 이게 없으면 아침까지의 이야기에서 멈춥니다.
+   * 사람이 직접 쓰거나 고친 일기는 절대 덮지 않습니다(서버의 `SOURCE_AT`).
+   *
+   * 0은 오류가 아니라 "정리할 것이 없었다"입니다 — 대화가 없었거나, 있었어도 한두 마디뿐이라
+   * 지어내지 않고는 일기가 되지 않는 날들입니다. 모델이 죽어 있으면 던집니다.
+   */
+  generateDiary: (childId: string) => Promise<number>;
 
   /** 선생님이 특정 아이에 대해 남기는, 그 아이의 부모만 볼 수 있는 글입니다. */
   addParentNote: (childId: string, authorName: string, text: string) => void;
@@ -327,7 +340,7 @@ export function DashboardStoreProvider({
         const [reportsByChild, parentNotesByChild, diaryByChild] = await Promise.all([
           loadReports(visibleChildren),
           loadParentNotes(visibleChildren),
-          loadOwnDiary(target.role, user.id),
+          loadDiaries(target.role, visibleChildren),
         ]);
 
         const { threadsByChild, aiThreadsByChild, memberThreadsByTeacher } = await loadChatThreads(
@@ -623,6 +636,22 @@ export function DashboardStoreProvider({
   );
 
   // ---- 부모 알림장 ----
+  // ---- 일기 ----
+  // 서버가 쓴 일기만 화면에 얹지 않고 목록을 통째로 다시 받습니다. 한 번에 최대 7일까지만
+  // 쓰기 때문에, 이미 있던 일기까지 함께 있어야 화면이 그날들을 잃지 않습니다.
+  const generateDiary = useCallback(
+    async (childId: string) => {
+      const written = await generateDiaries(childId);
+      if (written.length === 0) return 0;
+
+      const entries = await fetchDiaries(childId).catch(() => written);
+      setData((prev) => ({ ...prev, diaryByChild: { ...prev.diaryByChild, [childId]: entries } }));
+
+      return written.length;
+    },
+    [setData],
+  );
+
   const addParentNote = useCallback(
     async (childId: string, _authorName: string, text: string) => {
       const trimmed = text.trim();
@@ -976,6 +1005,7 @@ export function DashboardStoreProvider({
       addPhoto,
       updatePhotoTheme,
       deletePhoto,
+      generateDiary,
       addParentNote,
       addParentNoteComment,
       updateChildNickname,
@@ -1020,6 +1050,7 @@ export function DashboardStoreProvider({
       addPhoto,
       updatePhotoTheme,
       deletePhoto,
+      generateDiary,
       addParentNote,
       addParentNoteComment,
       updateChildNickname,
@@ -1176,13 +1207,25 @@ async function loadParentNotes(children: ChildRecord[]): Promise<DashboardData["
 }
 
 /**
- * 일기는 본인 것만 목록으로 받을 수 있습니다(`diary/list`가 세션 사용자 고정).
- * 부모·교사 화면에서 아이의 일기를 통째로 보여주려면 백엔드에 목록 엔드포인트가 필요합니다.
+ * 볼 수 있는 아이 전부의 일기입니다. 리포트·알림장과 같은 방식으로, 아이 수만큼 나갑니다.
+ *
+ * 일기장은 아이 본인과 보호자에게만 있는 화면이라(`FEATURES_BY_ROLE`) 교사·원장은 건너뜁니다.
+ * 서버는 교사에게도 열어 주지만, 아무도 열지 않을 화면 때문에 반 인원수만큼 요청을 낼 이유가
+ * 없습니다.
+ *
+ * 일기를 **쓰는** 것은 여기가 아닙니다. AI가 대화를 일기로 옮기는 데는 모델 호출이 필요해
+ * 워크스페이스를 여는 시간에 얹을 수 없고, 일기장 화면이 열릴 때 `generateDiary`가 합니다.
  */
-async function loadOwnDiary(role: DashboardData["role"], userId: string): Promise<DashboardData["diaryByChild"]> {
-  if (role !== "child") return {};
-  const entries = await fetchMyDiaries(userId).catch(() => []);
-  return { [userId]: entries };
+async function loadDiaries(
+  role: DashboardData["role"],
+  children: ChildRecord[],
+): Promise<DashboardData["diaryByChild"]> {
+  if (role !== "child" && role !== "parent") return {};
+
+  const entries = await Promise.all(
+    children.map(async (child) => [child.id, await fetchDiaries(child.id).catch(() => [])] as const),
+  );
+  return Object.fromEntries(entries);
 }
 
 /**
