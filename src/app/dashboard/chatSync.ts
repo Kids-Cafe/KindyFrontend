@@ -161,7 +161,10 @@ export async function requestAiReply(chatId: number): Promise<ChatMessageDTO> {
  *
  * 서버는 우리가 준 파일 이름을 그대로 STT 서비스에 넘기고, 그쪽은 **확장자로 형식을
  * 판별**합니다. 이름 없는 `Blob`은 `blob`으로 전송돼 거부당하므로 반드시 붙여야 합니다.
- * 브라우저마다 컨테이너가 다릅니다 — Chrome은 webm/opus, Safari는 mp4/aac입니다.
+ *
+ * 지금 `useVoiceRecorder`가 내는 것은 언제나 16kHz WAV(서버가 받는 유일한 형식)이므로
+ * 실제로 쓰이는 갈래는 `recording.wav` 하나입니다. 나머지는 다른 경로로 들어온 파일이
+ * 확장자 없이 나가지 않게 하는 안전망으로 남겨 둡니다.
  */
 export function recordingFileName(mimeType: string): string {
   const base = mimeType.split(";")[0].trim().toLowerCase();
@@ -181,7 +184,7 @@ export function recordingFileName(mimeType: string): string {
  * 할 일은 "다시 말해 볼래?" 하나뿐입니다.
  */
 export async function transcribeAudio(blob: Blob, mimeType = blob.type): Promise<string> {
-  const file = new File([blob], recordingFileName(mimeType), { type: mimeType || "audio/webm" });
+  const file = new File([blob], recordingFileName(mimeType), { type: mimeType || "audio/wav" });
   try {
     const text = await apiUpload<string>("/api/chat/transcribe", {}, file);
     return (text ?? "").trim();

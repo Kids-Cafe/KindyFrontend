@@ -139,6 +139,8 @@ export function AiChatFeature({ childId, partner }: { childId: string; partner: 
     if (busy) return;
     unlockAudio();
 
+    // 말이 멈추면 녹음이 스스로 끝나므로, 대개 이 약속은 버튼을 다시 누르지 않아도
+    // 풀립니다. 아무 말도 없었으면 `null`이라 그대로 없던 일이 됩니다.
     const result = await recorder.start();
     if (!result) return;
 
@@ -314,8 +316,10 @@ export function AiChatFeature({ childId, partner }: { childId: string; partner: 
               />
             ))}
           </div>
+          {/* 아이는 초를 세지 않습니다. "말하면 알아서 끝난다"만 알면 되므로 남은 시간
+              대신 지금 듣고 있는지를 보여 주고, 상한이 코앞일 때만 초를 꺼냅니다. */}
           <span className="text-xs font-bold shrink-0 tabular-nums" style={{ color: "#A06080" }}>
-            {recorder.secondsLeft}초
+            {recorder.secondsLeft <= 5 ? `${recorder.secondsLeft}초` : recorder.heard ? "듣고 있어요" : "말해 보세요"}
           </span>
         </div>
       )}
