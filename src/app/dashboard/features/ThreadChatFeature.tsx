@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Send } from "lucide-react";
+import { RefreshCw, Send } from "lucide-react";
 import { useDashboardStore } from "@/app/dashboard/DashboardStoreContext";
 import { REPORT_CATEGORY_ORDER, REPORT_META } from "@/app/dashboard/reportMeta";
 import { ReportByCategory } from "@/app/dashboard/reports";
@@ -29,8 +29,10 @@ export function ThreadChatFeature({
   viewerRole: ChatSender;
   viewerName: string;
 }) {
-  const { data, sendThreadMessage, insertDataCard } = useDashboardStore();
+  const { data, sendThreadMessage, insertDataCard, generateReports } = useDashboardStore();
   const [input, setInput] = useState("");
+  /** 지금 새로 쓰고 있는 리포트 종류입니다. 누른 칩 하나만 도는 표시라 한 개면 충분합니다. */
+  const [fetching, setFetching] = useState<DataCardType | null>(null);
   const thread = (data.threadsByChild[childId] ?? []).find((t) => t.parentId === parentId);
   const child = data.classChildren.find((c) => c.id === childId);
   const reports = data.reportsByChild[childId];
@@ -63,7 +65,25 @@ export function ThreadChatFeature({
     setInput("");
   }
 
-  function handleDataFetch(category: DataCardType) {
+  /**
+   * 칩을 누르면 그 종류의 리포트를 먼저 최신으로 만들고, 그 다음에 카드를 붙입니다.
+   *
+   * 카드는 붙는 순간이 아니라 **그려지는 순간** `data.reportsByChild`를 읽으므로(`reports.tsx`의
+   * `ReportByCategory`), 이 순서여야 붙자마자 채워진 카드가 보입니다. 반대로 하면 빈 카드가
+   * 먼저 뜨고 나중에 슬쩍 채워집니다.
+   *
+   * 생성에 실패해도 카드는 붙입니다 — 지금 저장돼 있는 리포트라도 보여주는 편이, 칩을 눌렀는데
+   * 아무 일도 일어나지 않는 것보다 낫습니다.
+   */
+  async function handleDataFetch(category: DataCardType) {
+    setFetching(category);
+    try {
+      await generateReports(childId, category);
+    } catch (cause) {
+      console.warn("[Kindy] 리포트를 새로 쓰지 못했어요.", cause);
+    } finally {
+      setFetching(null);
+    }
     insertDataCard(childId, parentId, category);
   }
 
@@ -110,15 +130,21 @@ export function ThreadChatFeature({
         <div className="flex gap-1.5 flex-wrap mb-2">
           {REPORT_CATEGORY_ORDER.map((category) => {
             const meta = REPORT_META[category];
+            const busy = fetching === category;
             return (
               <button
                 key={category}
-                onClick={() => handleDataFetch(category)}
-                className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-full font-bold transition-all hover:scale-[1.03] active:scale-95"
+                onClick={() => void handleDataFetch(category)}
+                // 다른 칩까지 잠그지는 않습니다. 한 종류를 쓰는 동안 다른 종류를 눌러도
+                // 서버가 각각 따로 처리하고, 대화에는 누른 순서대로 붙습니다.
+                disabled={busy}
+                className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-full font-bold transition-all hover:scale-[1.03] active:scale-95 disabled:opacity-60 disabled:hover:scale-100"
                 style={{ background: `${meta.color}22`, color: "#3B1355", border: `1px solid ${meta.color}55` }}
               >
-                <meta.icon className="w-3 h-3" style={{ color: meta.color }} />
-                {meta.short} 불러오기
+                {busy
+                  ? <RefreshCw className="w-3 h-3 animate-spin" style={{ color: meta.color }} />
+                  : <meta.icon className="w-3 h-3" style={{ color: meta.color }} />}
+                {meta.short} {busy ? "쓰는 중…" : "불러오기"}
               </button>
             );
           })}

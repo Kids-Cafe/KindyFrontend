@@ -22,6 +22,7 @@ import type {
   KindergartenRecord,
   PermissionKey,
   PhotoThemeId,
+  ReportCategory,
   TeacherRecord,
 } from "@/app/dashboard/types";
 import type { ChatDTO, PlainUserDTO } from "@/app/lib/dto";
@@ -66,6 +67,7 @@ import {
   fetchFamilies,
   fetchGuardiansOf,
   fetchParentNotes,
+  generateChildReports,
   generateDiaries,
 } from "@/app/dashboard/userSync";
 import {
@@ -169,6 +171,18 @@ interface DashboardStoreValue {
    * 지어내지 않고는 일기가 되지 않는 날들입니다. 모델이 죽어 있으면 던집니다.
    */
   generateDiary: (childId: string) => Promise<number>;
+
+  /**
+   * AI 파트너와의 대화와 그 아이의 일기로 성장 리포트를 쓰고, 이번에 정리된 항목 수를 답합니다.
+   *
+   * `category`를 주면 그 한 종류만 씁니다(대화창의 "불러오기" 칩이 그렇게 씁니다). 주지 않으면
+   * 5종을 훑어 **아직 없는 것**과 **쓴 뒤로 이야기가 쌓인 것**만 다시 씁니다 — 이미 최신인
+   * 카테고리는 모델을 부르지 않으므로, 화면을 열 때마다 부르는 값은 대개 조회 몇 번입니다.
+   *
+   * 0은 오류가 아니라 "정리할 것이 없었다"입니다 — 대화도 일기도 너무 적으면 다섯 칸을
+   * 지어내지 않고는 채울 수 없어 아예 쓰지 않습니다. 모델이 죽어 있으면 던집니다.
+   */
+  generateReports: (childId: string, category?: ReportCategory) => Promise<number>;
 
   /** 선생님이 특정 아이에 대해 남기는, 그 아이의 부모만 볼 수 있는 글입니다. */
   addParentNote: (childId: string, authorName: string, text: string) => void;
@@ -652,6 +666,30 @@ export function DashboardStoreProvider({
     [setData],
   );
 
+  // ---- 성장 리포트 ----
+  // 서버가 이번에 쓴 카테고리만 얹습니다. 일기와 달리 목록을 다시 받을 필요가 없습니다 —
+  // 리포트는 (아이, 카테고리)당 한 칸이라 새로 쓴 칸이 곧 최신이고, 손대지 않은 칸은 화면에
+  // 있는 값이 이미 서버의 값입니다. 한 종류만 생성했을 때 나머지 네 칸을 잃지 않도록
+  // 병합해서 넣습니다.
+  const generateReports = useCallback(
+    async (childId: string, category?: ReportCategory) => {
+      const written = await generateChildReports(childId, { category });
+      const count = Object.keys(written).length;
+      if (count === 0) return 0;
+
+      setData((prev) => ({
+        ...prev,
+        reportsByChild: {
+          ...prev.reportsByChild,
+          [childId]: { ...emptyChildReports(), ...prev.reportsByChild[childId], ...written },
+        },
+      }));
+
+      return count;
+    },
+    [setData],
+  );
+
   const addParentNote = useCallback(
     async (childId: string, _authorName: string, text: string) => {
       const trimmed = text.trim();
@@ -1006,6 +1044,7 @@ export function DashboardStoreProvider({
       updatePhotoTheme,
       deletePhoto,
       generateDiary,
+      generateReports,
       addParentNote,
       addParentNoteComment,
       updateChildNickname,
@@ -1051,6 +1090,7 @@ export function DashboardStoreProvider({
       updatePhotoTheme,
       deletePhoto,
       generateDiary,
+      generateReports,
       addParentNote,
       addParentNoteComment,
       updateChildNickname,

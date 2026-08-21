@@ -122,14 +122,13 @@ const DTO_TO_CATEGORY = Object.fromEntries(
 ) as Record<ReportCategoryDTO, ReportCategory>;
 
 /**
- * 아이의 리포트를 카테고리별로 받아 하나로 합칩니다.
+ * 카테고리별 DTO 묶음을 화면이 쓰는 한 덩어리로 합칩니다.
  *
  * `ReportDTO.data`는 서버가 내용을 검증하지 않고 그대로 보관하는 JSON 문자열입니다.
  * 즉 모양이 맞는지는 전적으로 프론트 책임이라, 깨진 값 하나가 화면 전체를 무너뜨리지
  * 않도록 카테고리 단위로 파싱에 실패하면 그 칸만 비웁니다.
  */
-export async function fetchChildReports(childId: string): Promise<Partial<ChildReports>> {
-  const list = await apiGet<ReportDTO[]>("/api/user/report/list", { childId });
+function mergeReports(list: ReportDTO[], childId: string): Partial<ChildReports> {
   const result: Partial<ChildReports> = {};
   for (const dto of list) {
     const category = DTO_TO_CATEGORY[dto.category];
@@ -141,6 +140,42 @@ export async function fetchChildReports(childId: string): Promise<Partial<ChildR
     }
   }
   return result;
+}
+
+/** 아이의 리포트를 카테고리별로 받아 하나로 합칩니다. */
+export async function fetchChildReports(childId: string): Promise<Partial<ChildReports>> {
+  const list = await apiGet<ReportDTO[]>("/api/user/report/list", { childId });
+  return mergeReports(list, childId);
+}
+
+/**
+ * AI 파트너와의 대화와 그 아이의 일기를 읽어 성장 리포트를 씁니다.
+ *
+ * 카테고리를 주지 않으면 5종 전부를 훑어 **아직 없는 것**과 **쓴 뒤로 이야기가 쌓인 것**만
+ * 다시 씁니다. 이미 최신인 카테고리는 모델을 부르지 않고 건너뛰므로, 화면을 열 때마다
+ * 부르는 비용은 대개 조회 몇 번입니다.
+ *
+ * 건드리지 않는 것: 대화도 일기도 너무 적었던 아이 — 다섯 칸을 네 문장으로 채우려면
+ * 지어내는 수밖에 없어서 아예 쓰지 않습니다. 그래서 **빈 객체는 오류가 아니라 "쓸 것이
+ * 없었다"입니다.** 키·몸무게는 어디에도 기록이 없는 값이라 서버가 모델의 답에서 걷어내고
+ * 이미 저장돼 있던 값을 이어받습니다.
+ *
+ * ⚠️ 사람이 `report/save`로 저장한 리포트와 AI가 쓴 것을 서버가 구분하지 못합니다
+ * (일기의 `SOURCE_AT`에 해당하는 칼럼이 `T_CHILD_REPORT`에 없습니다). 지금은 리포트를
+ * 저장하는 화면이 하나도 없어 문제가 되지 않지만, 생긴다면 그 칼럼이 먼저 필요합니다.
+ *
+ * `force`는 최신이어도 다시 씁니다. 모델이 느리거나 죽어 있으면 `GENERATION_FAILED`로 던집니다.
+ */
+export async function generateChildReports(
+  childId: string,
+  options: { category?: ReportCategory; force?: boolean } = {},
+): Promise<Partial<ChildReports>> {
+  const list = await apiPost<ReportDTO[]>("/api/user/report/generate", {
+    childId,
+    category: options.category ? CATEGORY_TO_DTO[options.category] : undefined,
+    force: options.force ? "true" : undefined,
+  });
+  return mergeReports(list, childId);
 }
 
 export async function saveChildReportOnServer<C extends ReportCategory>(
