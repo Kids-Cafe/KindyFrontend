@@ -1,6 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { beginSocialLogin } from "@/app/auth/oauth";
 import { SESSION_TTL_MS, clearSession, loadSession, saveSession } from "@/app/auth/storage";
 import type { AuthSession, AuthUser, SocialProviderId } from "@/app/auth/types";
 import {
@@ -8,13 +7,13 @@ import {
   SERVER_SESSION_IDLE_MS,
   apiGet,
   apiPost,
+  beginOAuth,
   checkSessionAlive,
   getLastActivityAt,
   onSessionExpired,
 } from "@/app/lib/api";
 import { SessionExpiredDialog } from "@/app/auth/SessionExpiredDialog";
 import type { PlainUserDTO } from "@/app/lib/dto";
-import { newId } from "@/app/lib/id";
 
 /**
  * 서버 프로필을 화면이 쓰는 사용자 정보로 옮깁니다.
@@ -23,13 +22,16 @@ import { newId } from "@/app/lib/id";
  * 이 값들은 사용자가 아니라 유치원과의 "관계"(RelationshipDTO)에 붙어 있기 때문입니다.
  * 그래서 여기서 채우지 않고, 대시보드가 `kindergarten/memberships`로 따로 알아냅니다.
  */
-function toAuthUser(profile: PlainUserDTO): AuthUser {
+function toAuthUser(profile: PlainUserDTO, provider: AuthUser["provider"] = "email"): AuthUser {
   return {
     id: profile.id,
     name: profile.name,
     loginId: profile.id,
     email: profile.email ?? "",
-    provider: "email",
+    // 어떻게 로그인했는지는 프로필에 없는 정보라 호출부가 알려줍니다. 여기서 늘 "email"로
+    // 적어 버리면, 소셜로 로그인한 사람도 프로필을 새로 읽을 때마다 배지가 사라집니다.
+    provider,
+    linkedProviders: (profile.linkedProviders ?? []) as SocialProviderId[],
     // 서버는 epoch(ms)로 주지만 AuthUser.joinedAt은 ISO 문자열입니다.
     joinedAt: profile.createdAt ? new Date(profile.createdAt).toISOString() : new Date().toISOString(),
     accountType: profile.accountType === "CHILD" ? "child" : "adult",
@@ -61,8 +63,10 @@ interface AuthContextValue {
   loginWithPassword: (loginId: string, password: string) => Promise<boolean>;
   /** 비밀번호 대조가 진행 중인지. 로그인 버튼 잠금/스피너에 씁니다. */
   isSubmittingPassword: boolean;
-  /** 콜백 처리 결과로 받은 세션을 확정합니다. */
+  /** 이미 만들어 둔 세션 객체를 확정합니다. */
   setSession: (session: AuthSession) => void;
+  /** 서버 프로필로 세션을 세웁니다. 소셜 콜백과 비밀번호 로그인이 함께 씁니다. */
+  establishSession: (profile: PlainUserDTO, provider?: AuthUser["provider"]) => void;
   /**
    * 로그인된 사용자 정보 일부를 병합해 저장합니다.
    * 서버에 자리가 있는 값(전화번호·주소)은 저장이 끝난 뒤에야 세션에 반영되고,
@@ -139,17 +143,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => onSessionExpired(expireSession), [expireSession]);
 
+  /**
+   * 서버 프로필로 로컬 세션을 세웁니다.
+   *
+   * 진짜 인증은 이미 서버 세션 쿠키가 쥐고 있습니다. 여기서 만드는 것은 화면이 읽을
+   * 사본일 뿐이라, 비밀번호 로그인과 소셜 로그인이 같은 함수로 끝날 수 있습니다 —
+   * 다른 것은 "어떻게 들어왔는지"뿐입니다.
+   */
+  const establishSession = useCallback((profile: PlainUserDTO, provider: AuthUser["provider"] = "email") => {
+    setSession({ user: toAuthUser(profile, provider), expiresAt: Date.now() + SESSION_TTL_MS });
+  }, [setSession]);
+
   const loginWith = useCallback(async (provider: SocialProviderId) => {
     setError(null);
     setPendingProvider(provider);
-    try {
-      await beginSocialLogin(provider);
-      // 정상 흐름이면 여기서 페이지를 떠나므로 아래 코드는 실행되지 않습니다.
-    } catch (cause) {
-      console.error("[Kindy] 소셜 로그인 시작 실패", cause);
-      setError("로그인 페이지로 이동하지 못했어요. 잠시 후 다시 시도해주세요.");
-      setPendingProvider(null);
-    }
+    // 인가 서버로 가는 길은 서버가 만듭니다. 이 호출은 주소창을 옮기므로 반환되지 않습니다.
+    beginOAuth(provider, "login", window.location.pathname + window.location.search);
   }, []);
 
   const loginWithPassword = useCallback(async (loginId: string, password: string): Promise<boolean> => {
@@ -159,7 +168,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await apiPost("/api/user/login", { id: loginId, password });
       const profile = await apiGet<PlainUserDTO>("/api/user/info");
 
-      setSession({ user: toAuthUser(profile), accessToken: String(newId()), expiresAt: Date.now() + SESSION_TTL_MS });
+      establishSession(profile, "email");
       return true;
     } catch (cause) {
       if (cause instanceof ApiError) {
@@ -172,7 +181,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsSubmittingPassword(false);
     }
-  }, [setSession]);
+  }, [establishSession]);
 
   /**
    * 사용자 정보 일부를 세션에 병합합니다.
@@ -281,13 +290,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loginWithPassword,
       isSubmittingPassword,
       setSession,
+      establishSession,
       updateProfile,
       setError,
       logout,
       sessionExpired,
       dismissSessionExpired,
     }),
-    [session, isLoading, pendingProvider, error, loginWith, loginWithPassword, isSubmittingPassword, setSession, updateProfile, logout, sessionExpired, dismissSessionExpired],
+    [session, isLoading, pendingProvider, error, loginWith, loginWithPassword, isSubmittingPassword, setSession, establishSession, updateProfile, logout, sessionExpired, dismissSessionExpired],
   );
 
   return (

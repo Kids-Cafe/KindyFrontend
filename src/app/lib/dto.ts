@@ -289,4 +289,9 @@ export interface PlainUserDTO {
   onboardingCompleted?: boolean;
   createdAt?: number;
   updatedAt?: number;
+  /**
+   * 이 계정에 연동된 소셜 제공자들(소문자). 본인 프로필을 조회할 때만 옵니다 —
+   * `userId`를 넘겨 아이 정보를 볼 때는 서버가 이 값을 빼고 보냅니다.
+   */
+  linkedProviders?: string[];
 }

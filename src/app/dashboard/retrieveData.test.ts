@@ -24,6 +24,7 @@ function makeUser(partial: Partial<AuthUser> = {}): AuthUser {
     email: "demo@kindy.demo",
     loginId: "demo",
     provider: "email",
+    linkedProviders: [],
     joinedAt: "2026-01-01T00:00:00.000Z",
     accountType: "adult",
     role: "teacher",

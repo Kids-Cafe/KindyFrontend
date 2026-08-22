@@ -1,189 +1,73 @@
-import { PROVIDERS, buildAuthorizeUrl, isMockMode, OAUTH_REDIRECT_URI } from "@/app/auth/providers";
-import { createCodeChallenge, createCodeVerifier, createState } from "@/app/auth/pkce";
-import { savePendingRequest, takePendingRequest } from "@/app/auth/storage";
-import type { AuthSession, OAuthCallbackParams, SocialProviderId } from "@/app/auth/types";
+import type { SocialProviderId } from "@/app/auth/types";
 
-/** 인가 서버에서 돌아왔을 때 앱이 받아주는 경로입니다. */
+/**
+ * 소셜 로그인에서 프론트가 맡는 부분입니다.
+ *
+ * 예전에는 이 파일이 인가 URL을 조립하고 PKCE를 만들고, 백엔드가 없을 때는 가짜 세션까지
+ * 지어냈습니다. 지금은 전부 서버가 합니다. 남은 일은 두 가지뿐입니다 —
+ * 지금 열린 주소가 콜백 화면인지 판별하는 것, 그리고 서버가 붙여 보낸 결과 코드를
+ * 사람이 읽을 말로 옮기는 것.
+ */
+
+/** 인가 서버에서 돌아온 브라우저가 도착하는 앱 경로입니다. */
 export const OAUTH_CALLBACK_PATH = "/oauth/callback";
-
-/** 목업 모드에서 콜백 URL에 붙이는 표시입니다. */
-const MOCK_FLAG = "kindy_mock";
 
 /** 지금 열린 URL이 OAuth 콜백 경로인지 판별합니다. */
 export function isOnCallbackRoute(): boolean {
   return window.location.pathname === OAUTH_CALLBACK_PATH;
 }
 
-/**
- * 소셜 로그인을 시작합니다. state/PKCE를 만들어 저장한 뒤 인가 페이지로 이동합니다.
- * 이 함수는 정상 동작 시 페이지를 떠나므로 반환되지 않습니다.
- */
-export async function beginSocialLogin(providerId: SocialProviderId): Promise<void> {
-  const provider = PROVIDERS[providerId];
-  const state = createState();
+/** 백엔드가 `?result=`로 실어 보내는 결과 코드입니다. */
+export type OAuthResult =
+  | "SIGNIN_COMPLETE"
+  | "LINK_COMPLETE"
+  | "NO_LINKED_ACCOUNT"
+  | "ALREADY_LINKED"
+  | "INVALID_ACCESS"
+  | "INVALID_STATE"
+  | "NOT_AVAILABLE"
+  | "OAUTH_FAILED";
 
-  let codeVerifier: string | undefined;
-  let codeChallenge: string | undefined;
-
-  if (provider.supportsPkce) {
-    codeVerifier = createCodeVerifier();
-    codeChallenge = (await createCodeChallenge(codeVerifier)) ?? undefined;
-    // 보안 컨텍스트가 아니어서 challenge를 못 만들었으면 PKCE 없이 진행합니다.
-    if (!codeChallenge) codeVerifier = undefined;
-  }
-
-  savePendingRequest({
-    provider: providerId,
-    state,
-    codeVerifier,
-    returnTo: window.location.pathname + window.location.search,
-    createdAt: Date.now(),
-  });
-
-  if (isMockMode(provider)) {
-    // 앱 키가 없을 때: 실제 인가 서버 대신 콜백 경로로 바로 이동해
-    // 리다이렉트 왕복 흐름을 그대로 재현합니다.
-    const mockUrl = new URL(OAUTH_REDIRECT_URI);
-    mockUrl.searchParams.set("code", `mock_code_${providerId}_${state.slice(0, 8)}`);
-    mockUrl.searchParams.set("state", state);
-    mockUrl.searchParams.set(MOCK_FLAG, "1");
-    window.location.assign(mockUrl.toString());
-    return;
-  }
-
-  window.location.assign(buildAuthorizeUrl(provider, { state, codeChallenge }));
+export interface OAuthCallbackParams {
+  result: OAuthResult | null;
+  provider: SocialProviderId | null;
+  returnTo: string;
 }
 
-/** 현재 URL 쿼리에서 콜백 파라미터를 읽습니다. */
+/** 콜백 URL의 쿼리에서 결과를 읽습니다. */
 export function readCallbackParams(): OAuthCallbackParams {
   const query = new URLSearchParams(window.location.search);
+  const returnTo = query.get("returnTo") || "/";
+
   return {
-    code: query.get("code"),
-    state: query.get("state"),
-    error: query.get("error"),
-    errorDescription: query.get("error_description"),
+    result: (query.get("result") as OAuthResult | null) ?? null,
+    provider: (query.get("provider") as SocialProviderId | null) ?? null,
+    // 서버가 이미 검증한 값이지만, 주소창은 누구나 고칠 수 있으므로 여기서도 한 번 더
+    // 확인합니다. 앱 안의 경로가 아니면 첫 화면으로 보냅니다.
+    returnTo: returnTo.startsWith("/") && !returnTo.startsWith("//") ? returnTo : "/",
   };
 }
 
-/** 콜백 처리 결과입니다. */
-export type CallbackResult =
-  | { ok: true; session: AuthSession; returnTo: string }
-  | { ok: false; message: string };
-
 /**
- * 콜백 파라미터를 검증하고 세션을 만들어 돌려줍니다.
- * state 불일치나 code 누락은 모두 실패로 처리합니다.
- */
-export async function completeSocialLogin(): Promise<CallbackResult> {
-  const params = readCallbackParams();
-  const pending = takePendingRequest();
-
-  if (params.error) {
-    return {
-      ok: false,
-      message:
-        params.error === "access_denied"
-          ? "로그인을 취소하셨어요. 다시 시도해주세요."
-          : params.errorDescription || `인증에 실패했어요. (${params.error})`,
-    };
-  }
-
-  if (!pending) {
-    return { ok: false, message: "로그인 요청 정보를 찾을 수 없어요. 처음부터 다시 시도해주세요." };
-  }
-
-  // state 검증 — CSRF 및 세션 고정 공격 방어의 핵심입니다.
-  if (!params.state || params.state !== pending.state) {
-    return { ok: false, message: "보안 검증에 실패했어요. 안전을 위해 로그인을 중단합니다." };
-  }
-
-  if (!params.code) {
-    return { ok: false, message: "인가 코드를 받지 못했어요. 다시 시도해주세요." };
-  }
-
-  const isMock = new URLSearchParams(window.location.search).get(MOCK_FLAG) === "1";
-
-  try {
-    const session = isMock
-      ? await createMockSession(pending.provider)
-      : await exchangeCodeForSession({
-          provider: pending.provider,
-          code: params.code,
-          codeVerifier: pending.codeVerifier,
-        });
-
-    return { ok: true, session, returnTo: pending.returnTo || "/" };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "로그인 처리 중 문제가 생겼어요.";
-    return { ok: false, message };
-  }
-}
-
-/**
- * ⚠️ 백엔드 연동 지점입니다.
+ * 실패한 결과를 안내 문구로 옮깁니다.
  *
- * 인가 코드를 액세스 토큰으로 바꾸는 요청에는 client secret이 필요한데,
- * 이 값은 브라우저에 절대 두면 안 됩니다. 그래서 실제 서비스에서는
- * 아래처럼 code를 우리 서버로 넘기고, 서버가 제공자와 토큰 교환을 한 뒤
- * 우리 서비스의 세션(JWT 등)을 내려주는 구조가 됩니다.
- *
- * 서버가 준비되면 아래 주석을 풀고 목업 반환을 지우면 됩니다.
+ * `NO_LINKED_ACCOUNT`가 실제로 가장 자주 보게 될 코드입니다 — 가입은 이메일로만 하고
+ * 소셜은 나중에 연동하는 구조라, 연동한 적 없는 계정으로 소셜 로그인을 누르면
+ * 여기로 옵니다. 그래서 "안 됩니다"가 아니라 다음에 뭘 하면 되는지를 알려줍니다.
  */
-async function exchangeCodeForSession(input: {
-  provider: SocialProviderId;
-  code: string;
-  codeVerifier?: string;
-}): Promise<AuthSession> {
-  // TODO(백엔드 연동): 아래 요청으로 교체하세요.
-  //
-  // const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/auth/social/${input.provider}`, {
-  //   method: "POST",
-  //   headers: { "Content-Type": "application/json" },
-  //   credentials: "include",
-  //   body: JSON.stringify({
-  //     code: input.code,
-  //     codeVerifier: input.codeVerifier,
-  //     redirectUri: OAUTH_REDIRECT_URI,
-  //   }),
-  // });
-  // if (!response.ok) throw new Error("서버에서 로그인 처리를 완료하지 못했어요.");
-  // const data = await response.json();
-  // return { user: data.user, accessToken: data.accessToken, expiresAt: Date.now() + data.expiresIn * 1000 };
-
-  if (import.meta.env.DEV) {
-    // 인가 코드는 자격증명에 준하는 값이라 개발 중에만 찍습니다.
-    // eslint-disable-next-line no-console
-    console.info(
-      `[Kindy] ${input.provider} 인가 코드를 받았습니다. 백엔드 토큰 교환이 아직 연결되지 않아 임시 세션을 만듭니다.`,
-      { code: input.code, hasCodeVerifier: Boolean(input.codeVerifier) },
-    );
+export function messageForResult(result: OAuthResult | null): string {
+  switch (result) {
+    case "NO_LINKED_ACCOUNT":
+      return "아직 연동되지 않은 계정이에요. 이메일로 로그인한 뒤 마이페이지에서 연동해주세요.";
+    case "ALREADY_LINKED":
+      return "이미 다른 Kindy 계정에 연동된 소셜 계정이에요.";
+    case "INVALID_ACCESS":
+      return "로그인이 풀렸어요. 다시 로그인한 뒤 시도해주세요.";
+    case "INVALID_STATE":
+      return "보안 검증에 실패했어요. 안전을 위해 로그인을 중단합니다.";
+    case "NOT_AVAILABLE":
+      return "지금은 이 방법으로 로그인할 수 없어요. 잠시 후 다시 시도해주세요.";
+    default:
+      return "인증에 실패했어요. 다시 시도해주세요.";
   }
-  return createMockSession(input.provider);
-}
-
-/** 제공자별 목업 프로필입니다. 백엔드 연동 전까지 화면 확인용으로만 씁니다. */
-const MOCK_PROFILES: Record<SocialProviderId, { name: string; email: string }> = {
-  kakao: { name: "김카카오", email: "kakao.user@kakao.com" },
-  naver: { name: "이네이버", email: "naver.user@naver.com" },
-  google: { name: "박구글", email: "google.user@gmail.com" },
-  apple: { name: "최애플", email: "apple.user@privaterelay.appleid.com" },
-};
-
-/** 네트워크 지연을 흉내 내 로딩 상태가 실제처럼 보이게 합니다. */
-async function createMockSession(provider: SocialProviderId): Promise<AuthSession> {
-  await new Promise((resolve) => setTimeout(resolve, 700));
-
-  const profile = MOCK_PROFILES[provider];
-  return {
-    user: {
-      id: `${provider}_${Math.random().toString(36).slice(2, 10)}`,
-      name: profile.name,
-      email: profile.email,
-      provider,
-      joinedAt: new Date().toISOString(),
-    },
-    accessToken: `mock_access_token_${provider}`,
-    // 목업 세션은 24시간 유지합니다.
-    expiresAt: Date.now() + 24 * 60 * 60 * 1000,
-  };
 }

@@ -38,8 +38,20 @@ export interface AuthUser {
   loginId?: string;
   /** 프로필 이미지 URL. 없으면 이름 첫 글자로 아바타를 그립니다. */
   avatarUrl?: string;
-  /** 이 계정이 어떤 소셜 제공자로 로그인했는지. 이메일 직접 가입은 "email"입니다. */
+  /**
+   * 지금 이 세션에 **어떤 방법으로 로그인했는지**입니다. 아이디/비밀번호로 들어왔으면
+   * "email"이고, 소셜 로그인으로 들어왔으면 그 제공자입니다. 아바타 배지 표시용이며,
+   * 계정에 무엇이 연동돼 있는지는 아래 `linkedProviders`가 따로 답합니다.
+   */
   provider: SocialProviderId | "email";
+  /**
+   * 이 계정에 연동된 소셜 제공자 목록입니다. 서버(`user/info`)가 내려줍니다.
+   *
+   * 가입은 언제나 이메일과 비밀번호로 하고 소셜은 나중에 덧붙이는 로그인 수단이라,
+   * 이 배열은 비어 있을 수 있고 여러 개일 수도 있습니다. "로그인한 방법"(`provider`)과
+   * 헷갈리지 마세요 — 카카오로 로그인했더라도 구글이 함께 연동돼 있을 수 있습니다.
+   */
+  linkedProviders: SocialProviderId[];
   /** ISO 8601 문자열 */
   joinedAt: string;
   /**
@@ -70,30 +82,15 @@ export interface AuthUser {
   zonecode?: string;
 }
 
-/** localStorage에 저장되는 세션 형태입니다. */
+/**
+ * localStorage에 저장되는 세션 형태입니다.
+ *
+ * 토큰이 없다는 점에 주의하세요. 진짜 인증은 서버가 준 세션 쿠키가 쥐고 있고, 여기 있는
+ * 것은 화면을 그리기 위한 사본입니다. 예전에는 `accessToken` 자리가 있었지만 서버가
+ * 토큰을 발급하지 않아서 클라이언트가 가짜 값을 지어 넣고 아무 데도 보내지 않았습니다.
+ */
 export interface AuthSession {
   user: AuthUser;
-  accessToken: string;
   /** epoch milliseconds. 지나면 만료로 간주하고 세션을 버립니다. */
   expiresAt: number;
-}
-
-/** 인가 서버에서 돌아왔을 때 URL에 실려 오는 값들입니다. */
-export interface OAuthCallbackParams {
-  code: string | null;
-  state: string | null;
-  error: string | null;
-  errorDescription: string | null;
-}
-
-/** 리다이렉트 직전에 sessionStorage에 저장해 두는 진행 중 요청 정보입니다. */
-export interface PendingAuthRequest {
-  provider: SocialProviderId;
-  state: string;
-  /** PKCE를 쓰는 제공자만 값이 있습니다. */
-  codeVerifier?: string;
-  /** 로그인 후 돌아갈 경로 */
-  returnTo: string;
-  /** 요청 시각(epoch ms). 너무 오래된 요청은 무효 처리합니다. */
-  createdAt: number;
 }

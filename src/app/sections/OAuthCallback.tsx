@@ -1,15 +1,20 @@
 import { useEffect, useRef, useState } from "react";
-import { completeSocialLogin } from "@/app/auth/oauth";
+import { messageForResult, readCallbackParams } from "@/app/auth/oauth";
 import { useAuth } from "@/app/auth/AuthContext";
+import { apiGet } from "@/app/lib/api";
+import type { PlainUserDTO } from "@/app/lib/dto";
 import { MiniStar, KioSVG, KinaSVG } from "@/app/components/decorative";
 
 /**
  * `/oauth/callback` 경로에서 렌더되는 화면입니다.
- * 인가 서버가 붙여 보낸 code/state를 검증하고 세션을 만든 뒤
- * 로그인을 시작했던 페이지로 되돌려 보냅니다.
+ *
+ * code와 state 검증, 토큰 교환, 세션 발급은 전부 백엔드가 이미 끝냈습니다. 브라우저가
+ * 여기 도착했을 때는 세션 쿠키가 이미 붙어 있고, 주소창에는 결과 코드만 실려 옵니다.
+ * 그래서 이 화면이 하는 일은 결과를 읽고, 성공이면 서버에서 프로필을 받아 화면 상태를
+ * 채운 뒤 원래 있던 곳으로 돌려보내는 것뿐입니다.
  */
 export function OAuthCallback() {
-  const { setSession, setError } = useAuth();
+  const { establishSession, setError } = useAuth();
   const [failure, setFailure] = useState<string | null>(null);
   // React StrictMode에서 effect가 두 번 실행돼도 콜백 처리는 한 번만 하도록 막습니다.
   const handled = useRef(false);
@@ -19,19 +24,35 @@ export function OAuthCallback() {
     handled.current = true;
 
     void (async () => {
-      const result = await completeSocialLogin();
+      const { result, provider, returnTo } = readCallbackParams();
 
-      if (!result.ok) {
-        setFailure(result.message);
-        setError(result.message);
+      // 연동은 이미 로그인한 상태에서 하는 일이라 세션을 새로 만들 것이 없습니다.
+      // 돌아간 화면이 목록을 다시 읽으면서 새 연동을 반영합니다.
+      if (result === "LINK_COMPLETE") {
+        window.location.replace(returnTo);
         return;
       }
 
-      setSession(result.session);
-      // 히스토리에 콜백 URL이 남지 않도록 replace로 이동합니다.
-      window.location.replace(result.returnTo || "/");
+      if (result !== "SIGNIN_COMPLETE") {
+        const message = messageForResult(result);
+        setFailure(message);
+        setError(message);
+        return;
+      }
+
+      try {
+        // 쿠키는 이미 있습니다. 화면이 쓸 사용자 정보만 서버에서 받아옵니다.
+        const profile = await apiGet<PlainUserDTO>("/api/user/info");
+        establishSession(profile, provider ?? "email");
+        // 히스토리에 콜백 URL이 남지 않도록 replace로 이동합니다.
+        window.location.replace(returnTo);
+      } catch {
+        const message = "로그인은 됐지만 정보를 불러오지 못했어요. 다시 시도해주세요.";
+        setFailure(message);
+        setError(message);
+      }
     })();
-  }, [setSession, setError]);
+  }, [establishSession, setError]);
 
   return (
     <div

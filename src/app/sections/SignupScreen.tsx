@@ -16,7 +16,6 @@ import { SESSION_TTL_MS } from "@/app/auth/storage";
 import { openAddressSearch } from "@/app/auth/addressSearch";
 import type { StudentGender } from "@/app/auth/types";
 import { useLeaveConfirmation } from "@/app/hooks/useLeaveConfirmation";
-import { newId } from "@/app/lib/id";
 import { ApiError, apiGet, apiPost } from "@/app/lib/api";
 import { registerUser } from "@/app/auth/signup";
 
@@ -162,8 +161,10 @@ export function SignupScreen({
       return;
     }
     // 서버가 인증번호를 세션에 담아 두므로 세션 쿠키를 반드시 함께 보내야 합니다
-    // (`credentials: "include"` — apiGet이 항상 붙입니다). 빠지면 아래 verifyEmail이 항상 실패합니다.
-    apiGet("/api/user/getVerificationEmail", { email: form.email })
+    // (`credentials: "include"` — apiPost가 항상 붙입니다). 빠지면 아래 verifyEmail이 항상 실패합니다.
+    // 이름은 get으로 시작하지만 POST입니다 — 메일을 보내고 세션을 바꾸는 요청이라
+    // CSRF 검사가 볼 수 있어야 하기 때문입니다.
+    apiPost("/api/user/getVerificationEmail", { email: form.email })
       .then(() => {
         setErrors((prev) => ({ ...prev, email: undefined }));
         setEmailVerification({ sent: true, code: "", verified: false });
@@ -258,7 +259,7 @@ export function SignupScreen({
       window.alert("회원가입에 실패했습니다.");
       return;
     }
-    setSession({ user, accessToken: String(newId()), expiresAt: Date.now() + SESSION_TTL_MS });
+    setSession({ user, expiresAt: Date.now() + SESSION_TTL_MS });
     onSignedUp();
   }
 
@@ -279,7 +280,7 @@ export function SignupScreen({
       window.alert("회원가입에 실패했습니다.");
       return;
     }
-    setSession({ user, accessToken: String(newId()), expiresAt: Date.now() + SESSION_TTL_MS });
+    setSession({ user, expiresAt: Date.now() + SESSION_TTL_MS });
     onSignedUp();
   }
 

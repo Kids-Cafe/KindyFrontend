@@ -60,6 +60,8 @@ export async function registerUser(payload: SignupPayload): Promise<AuthUser> {
         loginId: payload.loginId,
         email: payload.email,
         provider: "email",
+        // 막 만든 계정이라 연동된 소셜 계정은 아직 없습니다. 마이페이지에서 붙입니다.
+        linkedProviders: [],
         joinedAt,
         accountType: payload.accountType,
         birthDate: payload.birthDate,

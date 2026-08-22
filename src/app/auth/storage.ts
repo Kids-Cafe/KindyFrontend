@@ -1,20 +1,18 @@
-import type { AuthSession, PendingAuthRequest } from "@/app/auth/types";
+import type { AuthSession } from "@/app/auth/types";
 
 /**
  * 세션 영속화 계층입니다.
  *
- * - 로그인 세션: localStorage (새로고침/탭 재방문에도 유지)
- * - 진행 중인 인가 요청: sessionStorage (탭을 닫으면 사라져야 하는 일회성 값)
+ * 로그인 세션을 localStorage에 담아 새로고침이나 탭 재방문에도 유지합니다.
+ *
+ * 진행 중인 소셜 로그인 요청(state·code_verifier)은 여기 없습니다 — 서버 세션이
+ * 들고 있습니다. 브라우저가 보관하면 사용자가 직접 고칠 수 있는 값이 되기 때문입니다.
  *
  * 사파리 프라이빗 모드처럼 스토리지 접근이 막힌 환경에서도 앱이 죽지 않도록
  * 모든 접근을 try/catch로 감쌉니다.
  */
 
 const SESSION_KEY = "kindy.auth.session";
-const PENDING_KEY = "kindy.auth.pending";
-
-/** 진행 중인 인가 요청이 유효한 것으로 인정되는 시간(10분) */
-const PENDING_TTL_MS = 10 * 60 * 1000;
 
 /**
  * 로그인 세션 유효 기간(7일)입니다. 백엔드가 붙으면 이 값 대신 서버가 내려주는
@@ -71,42 +69,5 @@ export function clearSession(): void {
     localStorage.removeItem(SESSION_KEY);
   } catch {
     /* noop */
-  }
-}
-
-export function savePendingRequest(pending: PendingAuthRequest): void {
-  try {
-    sessionStorage.setItem(PENDING_KEY, JSON.stringify(pending));
-  } catch {
-    /* noop */
-  }
-}
-
-function isPendingAuthRequest(value: unknown): value is PendingAuthRequest {
-  if (typeof value !== "object" || value === null) return false;
-
-  const { state, provider, createdAt } = value as Record<string, unknown>;
-  if (typeof state !== "string" || state.length === 0) return false;
-  if (typeof provider !== "string" || provider.length === 0) return false;
-
-  // createdAt이 없거나 숫자가 아니면 아래 TTL 비교가 NaN이 되어 "만료되지 않음"으로
-  // 통과해 버립니다. 여기서 먼저 막아야 오래된/변조된 요청이 살아남지 않습니다.
-  return typeof createdAt === "number" && Number.isFinite(createdAt);
-}
-
-/** 진행 중인 요청을 꺼내면서 동시에 지웁니다(일회용). */
-export function takePendingRequest(): PendingAuthRequest | null {
-  try {
-    const raw = sessionStorage.getItem(PENDING_KEY);
-    sessionStorage.removeItem(PENDING_KEY);
-    if (!raw) return null;
-
-    const parsed: unknown = JSON.parse(raw);
-    if (!isPendingAuthRequest(parsed)) return null;
-    if (Date.now() - parsed.createdAt > PENDING_TTL_MS) return null;
-
-    return parsed;
-  } catch {
-    return null;
   }
 }

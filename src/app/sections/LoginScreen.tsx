@@ -3,7 +3,7 @@ import { X, Loader2 } from "lucide-react";
 import mushroomBg from "@/imports/image_22d709cf.jpg";
 import { MiniStar, KioSVG, KinaSVG } from "@/app/components/decorative";
 import { useAuth } from "@/app/auth/AuthContext";
-import { PROVIDERS, PROVIDER_ORDER, isMockMode } from "@/app/auth/providers";
+import { PROVIDERS, PROVIDER_ORDER } from "@/app/auth/providers";
 import { ProviderIcon } from "@/app/auth/ProviderIcon";
 import { withJosa } from "@/app/lib/korean";
 
@@ -192,7 +192,7 @@ export function LoginScreen({
                   disabled={isBusy}
                   aria-label={`${provider.label} 계정으로 로그인`}
                   aria-busy={isPending}
-                  title={isMockMode(provider) ? `${provider.label} 앱 키가 없어 목업 모드로 동작합니다` : `${withJosa(provider.label, "으로/로")} 로그인`}
+                  title={`${withJosa(provider.label, "으로/로")} 로그인`}
                   className="w-12 h-12 rounded-2xl flex items-center justify-center transition-all shadow-sm enabled:hover:scale-105 enabled:active:scale-95 disabled:cursor-not-allowed"
                   style={{
                     background: provider.brand.background,

@@ -20,6 +20,7 @@ import { useChildVoiceSettings } from "@/app/dashboard/childVoiceSettings";
 import { useMyFamily, type MyFamily } from "@/app/dashboard/useMyFamily";
 import { useMyKindergartens } from "@/app/dashboard/useMyKindergartens";
 import { ChildAccountsPanel } from "@/app/sections/ChildAccountsPanel";
+import { LinkedAccountsPanel } from "@/app/sections/LinkedAccountsPanel";
 import { visibleMenuItems, type MenuKey } from "@/app/sections/mypageMenu";
 import {
   FieldLabel,
@@ -94,7 +95,13 @@ function MyPagePanel({
   }
 
   /**
-   * 이메일 계정은 저장 전에 현재 비밀번호를 확인합니다. 소셜 계정은 비밀번호가 없어 바로 저장합니다.
+   * 민감한 정보를 저장하기 전에 현재 비밀번호를 확인합니다.
+   *
+   * 예외는 없습니다. 예전에는 "소셜 계정은 비밀번호가 없다"며 건너뛰는 가지가 있었지만,
+   * 지금은 가입이 언제나 이메일과 비밀번호로 이뤄지고 소셜은 나중에 덧붙이는 로그인
+   * 수단일 뿐입니다. 카카오로 들어왔더라도 그 계정에는 비밀번호가 있고, 여기서 건너뛰면
+   * 소셜로 로그인한 사람만 주소·전화번호를 확인 없이 바꿀 수 있게 됩니다.
+   *
    * 저장 자체가 서버 요청이므로 실패하면 안내만 남기고 화면은 바꾸지 않습니다.
    */
   async function requirePassword(action: () => Promise<void> | void) {
@@ -102,14 +109,12 @@ function MyPagePanel({
 
     setIsVerifying(true);
     try {
-      if (user!.provider === "email") {
-        if (!(await verifyCurrentPassword(user!.loginId ?? user!.id, pwConfirm))) {
-          setPwError("비밀번호가 올바르지 않아요");
-          return;
-        }
-        setPwError(null);
-        setPwConfirm("");
+      if (!(await verifyCurrentPassword(user!.loginId ?? user!.id, pwConfirm))) {
+        setPwError("비밀번호가 올바르지 않아요");
+        return;
       }
+      setPwError(null);
+      setPwConfirm("");
       await action();
     } catch (cause) {
       console.error("[Kindy] 저장 실패", cause);
@@ -138,9 +143,6 @@ function MyPagePanel({
     setIsVerifying(true);
     try {
       const result = await changePassword({
-        loginId: user!.loginId ?? user!.id,
-        name: user!.name,
-        email: user!.email,
         currentPassword: currentPw,
         newPassword: newPw,
       });
@@ -201,7 +203,7 @@ function MyPagePanel({
           <p className="text-xs" style={{ color: "#9CA3AF" }}>
             이 유치원에서만 쓰는 이름이에요. 비워 두면 실명({user.name})으로 보여요.
           </p>
-          <PasswordConfirmField show={user.provider === "email"} value={pwConfirm} onChange={(v) => { setPwConfirm(v); setPwError(null); }} error={pwError} />
+          <PasswordConfirmField show value={pwConfirm} onChange={(v) => { setPwConfirm(v); setPwError(null); }} error={pwError} />
           <SaveButton
             disabled={isVerifying}
             onClick={() => void requirePassword(async () => {
@@ -213,9 +215,8 @@ function MyPagePanel({
       );
 
     case "password":
-      if (user.provider !== "email") {
-        return <p className="text-sm leading-relaxed" style={{ color: "#6B7280" }}>{PROVIDERS[user.provider].label} 계정으로 로그인 중이라 비밀번호가 없어요. 해당 서비스에서 비밀번호를 관리해주세요.</p>;
-      }
+      // 여기에는 "소셜 계정이라 비밀번호가 없어요" 안내가 있었지만, 그런 계정은 존재할 수
+      // 없습니다 — 가입은 언제나 이메일과 비밀번호로 하고 소셜은 나중에 붙이는 수단입니다.
       return (
         <div className="space-y-4">
           <div>
@@ -251,7 +252,7 @@ function MyPagePanel({
           <TextField value={address} readOnly />
           <FieldLabel>상세주소</FieldLabel>
           <TextField value={addressDetail} onChange={setAddressDetail} placeholder="동/호수 등" />
-          <PasswordConfirmField show={user.provider === "email"} value={pwConfirm} onChange={(v) => { setPwConfirm(v); setPwError(null); }} error={pwError} />
+          <PasswordConfirmField show value={pwConfirm} onChange={(v) => { setPwConfirm(v); setPwError(null); }} error={pwError} />
           <SaveButton
             disabled={isVerifying}
             onClick={() => void requirePassword(async () => {
@@ -462,32 +463,14 @@ function MyPagePanel({
       return <ChildAccountsPanel family={family} onDone={onDone} />;
 
     case "linkedAccounts":
-      return (
-        <div className="flex gap-2.5 flex-wrap">
-          {PROVIDER_ORDER.map((id) => {
-            const isLinked = id === user.provider;
-            return (
-              <div key={id} title={isLinked ? `${PROVIDERS[id].label} 연동됨` : `${PROVIDERS[id].label} 미연동`}
-                className="relative w-14 h-14 rounded-2xl flex items-center justify-center"
-                style={{ background: PROVIDERS[id].brand.background, border: PROVIDERS[id].brand.border ?? "none", opacity: isLinked ? 1 : 0.28, filter: isLinked ? "none" : "grayscale(1)" }}>
-                <ProviderIcon provider={id} size={22} />
-                {isLinked && (
-                  <span className="absolute -top-1 -right-1 rounded-full flex items-center justify-center" style={{ width: 20, height: 20, background: "#22C55E", border: "1.5px solid white" }}>
-                    <Check className="w-3 h-3" style={{ color: "white" }} strokeWidth={3.5} />
-                  </span>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      );
+      return <LinkedAccountsPanel onDone={onDone} />;
 
     case "phone":
       return (
         <div className="space-y-4">
           <FieldLabel>전화번호</FieldLabel>
           <TextField value={phone} onChange={setPhone} placeholder="010-0000-0000" />
-          <PasswordConfirmField show={user.provider === "email"} value={pwConfirm} onChange={(v) => { setPwConfirm(v); setPwError(null); }} error={pwError} />
+          <PasswordConfirmField show value={pwConfirm} onChange={(v) => { setPwConfirm(v); setPwError(null); }} error={pwError} />
           <SaveButton
             disabled={isVerifying}
             onClick={() => void requirePassword(async () => {
@@ -676,7 +659,10 @@ export function MyPage({
               <p className="text-xs font-bold mb-3" style={{ color: "#6B7280" }}>연동된 계정</p>
               <div className="flex gap-2.5">
                 {PROVIDER_ORDER.map((id) => {
-                  const isLinked = id === user.provider;
+                  // 연동 여부는 "이번에 어떻게 로그인했는지"(user.provider)가 아니라
+                  // 계정에 무엇이 붙어 있는지를 봐야 합니다. 카카오로 들어왔어도 구글이
+                  // 함께 연동돼 있을 수 있습니다.
+                  const isLinked = user.linkedProviders.includes(id);
                   return (
                     <div key={id} title={isLinked ? `${PROVIDERS[id].label} 연동됨` : `${PROVIDERS[id].label} 미연동`}
                       className="relative w-11 h-11 rounded-2xl flex items-center justify-center"

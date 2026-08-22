@@ -178,6 +178,46 @@ export async function apiPostBinary(path: string, params?: Params, signal?: Abor
   return res.blob();
 }
 
+/** `user/oauth/links`가 돌려주는 연동 정보입니다(OAuthDTO). */
+export interface OAuthLinkDTO {
+  id: string;
+  provider: "GOOGLE" | "KAKAO" | "NAVER" | "APPLE";
+  userId: string;
+  providerEmail?: string;
+  createdAt?: number;
+}
+
+/**
+ * 소셜 로그인/연동을 시작합니다.
+ *
+ * `fetch`가 아니라 **주소창을 통째로 옮깁니다**. 인가 서버로 갔다가 돌아오는 왕복은
+ * 브라우저가 직접 따라가야 하는 이동이라, fetch로는 302를 따라갈 수도 쿠키를 받을 수도
+ * 없습니다. 그래서 이 함수는 정상 동작하면 반환되지 않습니다.
+ *
+ * state와 PKCE, 토큰 교환은 전부 서버가 합니다 — client secret이 브라우저에
+ * 내려오지 않아야 하고, 네이버처럼 PKCE를 지원하지 않는 제공자도 있기 때문입니다.
+ */
+export function beginOAuth(provider: string, mode: "login" | "link", returnTo = "/"): void {
+  const params = new URLSearchParams({ mode, returnTo });
+  window.location.assign(`/api/user/oauth/${provider}/authorize?${params.toString()}`);
+}
+
+/** 지금 로그인한 계정에 연동된 제공자 목록입니다. */
+export function getOAuthLinks(): Promise<OAuthLinkDTO[]> {
+  return apiGet<OAuthLinkDTO[]>("/api/user/oauth/links");
+}
+
+/**
+ * 연동을 해제합니다.
+ *
+ * 계정은 모두 이메일과 비밀번호로 가입하므로(서버의 PASSWORD 칼럼이 NOT NULL입니다)
+ * 마지막 하나를 지워도 로그인 수단이 없어지지 않습니다. "이걸 지우면 못 들어옵니다" 같은
+ * 방어가 필요 없는 이유입니다.
+ */
+export function unlinkOAuth(provider: string): Promise<void> {
+  return apiPost("/api/user/oauth/unlink", { provider });
+}
+
 export async function apiUpload<T = void>(path: string, params: Params, file: File, fileField = "file"): Promise<T> {
   const form = new FormData();
   for (const [key, value] of Object.entries(params)) {
