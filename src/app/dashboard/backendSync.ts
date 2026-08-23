@@ -262,6 +262,9 @@ function mapPhoto(dto: PhotoDTO): PhotoRecord {
     id: dto.id,
     classId: dto.classId,
     url: dto.url,
+    // 서버는 축소본이 없을 때 원본을 대신 내려주므로 경로는 항상 유효합니다. `??`는 이 필드를
+    // 아직 모르는 옛 서버를 만났을 때를 위한 것입니다.
+    thumbUrl: dto.thumbUrl ?? dto.url,
     caption: dto.caption,
     uploadedBy: dto.authorName ?? dto.author,
     theme: toPhotoTheme(dto.theme),

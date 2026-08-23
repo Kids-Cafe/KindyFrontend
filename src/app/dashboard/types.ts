@@ -277,11 +277,22 @@ export interface ScheduleEvent {
 /** 사진 카드를 감싸는 장식 테마입니다. 업로더가 사진별로 지정합니다. */
 export type PhotoThemeId = "clip" | "polaroid" | "frame-wood" | "frame-gold";
 
-/** 사진첩 한 장입니다. data URL 또는 object URL을 그대로 저장합니다(목업이라 서버 업로드 없음). */
+/**
+ * 사진첩 한 장입니다.
+ *
+ * `url`과 `thumbUrl`은 파일 주소가 아니라 이 서버의 조회 경로입니다. 사진 자체는 비공개
+ * 저장소에 있고, 요청이 올 때마다 서버가 "이 사람이 이 반을 볼 수 있는가"를 다시 확인한 뒤
+ * 내려줍니다. 그래서 사진을 지우면 곧바로 안 보이고, 링크를 남에게 넘겨도 소용이 없습니다.
+ *
+ * 목록(그리드)에서는 `thumbUrl`을, 전체화면 뷰어에서는 `url`을 씁니다. 그리드에 원본을 쓰면
+ * 150px짜리 칸을 그리려고 8MB 파일을 스무 장씩 받아오게 됩니다.
+ */
 export interface PhotoRecord {
   id: number;
   classId: number;
   url: string;
+  /** 그리드용 축소본. 축소본이 없는 형식이면 서버가 원본을 돌려주므로 항상 값이 있습니다. */
+  thumbUrl: string;
   caption?: string;
   uploadedBy: string;
   theme: PhotoThemeId;

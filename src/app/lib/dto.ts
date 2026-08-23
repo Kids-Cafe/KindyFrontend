@@ -130,7 +130,10 @@ export interface SupplyCommentDTO {
 export interface PhotoDTO {
   id: number;
   classId: number;
+  /** 조회용 경로(`/api/class/photo/raw?id=…`)입니다. 서버가 매 요청마다 열람 권한을 다시 봅니다. */
   url: string;
+  /** 같은 사진의 축소본입니다. 축소본이 없는 형식(WebP)이면 서버가 원본을 그대로 돌려줍니다. */
+  thumbUrl?: string;
   caption?: string;
   /** clip / polaroid / frame-wood / frame-gold */
   theme?: string;

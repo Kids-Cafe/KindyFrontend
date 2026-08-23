@@ -156,7 +156,11 @@ interface DashboardStoreValue {
   deleteScheduleEvent: (eventId: number) => void;
 
   /** 사진첩 (MANAGE_CLASS 필요, 본인이 올린 사진은 언제나 수정·삭제 가능). */
-  addPhoto: (file: File, uploadedBy: string, classId: number, theme: PhotoThemeId, caption?: string) => void;
+  /**
+   * 업로드는 실패할 수 있고 화면이 그걸 알아야 하므로 `Promise`를 그대로 돌려줍니다.
+   * (`=> void`로 적어 두면 TypeScript가 반환값을 조용히 버려서 실패가 사라집니다.)
+   */
+  addPhoto: (file: File, uploadedBy: string, classId: number, theme: PhotoThemeId, caption?: string) => Promise<void>;
   updatePhotoTheme: (photoId: number, theme: PhotoThemeId) => void;
   deletePhoto: (photoId: number) => void;
 
