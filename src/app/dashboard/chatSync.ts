@@ -41,27 +41,32 @@ export interface ChatParticipants {
 /**
  * 서버 메시지를 화면 메시지로 옮깁니다.
  *
- * ⚠️ 알려진 한계: `T_CHAT_MESSAGE`에는 작성자 칼럼이 없습니다. 남는 건 `ROLE`
- * (user/assistant/system/tool)뿐이라, **사람 둘이 나눈 대화에서는 어느 쪽이 보낸
- * 메시지인지 알 수 없습니다.** 그래서 아래는 user 역할을 전부 호스트로 돌립니다 —
- * AI 대화(host == client)는 user/assistant로 갈리므로 정확하지만, 학부모↔선생님이나
- * 원장↔선생님 대화는 말풍선의 좌우와 이름이 실제와 다를 수 있습니다.
+ * 누가 썼는지는 `dto.author`(서버가 세션에서 찍는 userId)가 말해 줍니다. `role`은
+ * 사람과 AI를 가를 뿐이라 이걸 대신할 수 없습니다 — 사람 둘의 대화는 전부 `user`입니다.
  *
- * 백엔드에 `T_CHAT_MESSAGE.AUTHOR`가 추가되면 이 함수는 그 값을 그대로 쓰면 됩니다.
+ * `author`가 없는 메시지는 두 가지입니다:
+ *
+ * - AI가 한 말(`role === "assistant"`) — 쓴 사람이 없는 게 맞습니다.
+ * - `AUTHOR` 칼럼이 생기기 전에 저장된 메시지 — 작성자가 기록된 적이 없어 되살릴 수
+ *   없습니다. 이때만 예전 추측("전부 호스트가 썼다")으로 물러섭니다. 아이 ↔ AI 대화는
+ *   host == client라 이 추측이 정확하고, 사람 둘의 옛 대화는 좌우와 이름이 실제와
+ *   다를 수 있습니다 — 새 메시지부터는 정확합니다.
  */
-function mapMessage(dto: ChatMessageDTO, chat: ChatDTO, participants: ChatParticipants): ChatMessage {
+export function mapMessage(dto: ChatMessageDTO, chat: ChatDTO, participants: ChatParticipants): ChatMessage {
   const isAssistant = dto.role === "assistant";
-  const speakerId = isAssistant ? chat.client : chat.host;
+  const isAiPartner = isAssistant && chat.host === chat.client;
+  const speakerId = dto.author ?? (isAssistant ? chat.client : chat.host);
 
   const card = dto.type !== "TEXT" ? TYPE_TO_CARD[dto.type] : undefined;
 
   return {
     id: dto.num,
-    sender: isAssistant && chat.host === chat.client ? "ai" : participants.senderById[speakerId] ?? "teacher",
-    senderName:
-      isAssistant && chat.host === chat.client
-        ? participants.assistantName ?? "AI 파트너"
-        : participants.nameById[speakerId] ?? speakerId,
+    sender: isAiPartner ? "ai" : participants.senderById[speakerId] ?? "teacher",
+    senderName: isAiPartner
+      ? participants.assistantName ?? "AI 파트너"
+      // 서버가 준 이름(원별 별명 우선)보다 화면이 이미 들고 있는 이름을 먼저 씁니다 —
+      // 같은 사람이 대화창과 명단에서 다른 이름으로 보이면 같은 사람인지 알 수 없습니다.
+      : participants.nameById[speakerId] ?? dto.authorName ?? speakerId,
     kind: card ? "data-card" : "text",
     text: card ? undefined : dto.content,
     cardType: card,

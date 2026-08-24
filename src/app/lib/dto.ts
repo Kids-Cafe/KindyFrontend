@@ -271,6 +271,19 @@ export interface ChatMessageDTO {
   type: ChatMessageType;
   content: string;
   role: ChatMessageRole;
+  /**
+   * 이 메시지를 쓴 사람의 userId입니다.
+   *
+   * `role`만으로는 알 수 없습니다 — 아이 ↔ AI 대화는 host와 client가 같은 사람이라
+   * user/assistant로 갈리지만, **사람 둘의 대화는 전부 `user`**라 누가 썼는지 역할이
+   * 말해 주지 않습니다. 서버가 세션에서 찍으므로 위조할 수 없습니다.
+   *
+   * 없을 수 있습니다: AI가 한 말(`assistant`)에는 쓴 사람이 없고, 이 칼럼이 생기기 전에
+   * 저장된 메시지는 작성자를 되살릴 수 없어 비워 둡니다.
+   */
+  author?: string;
+  /** 화면에 쓸 작성자 이름입니다(원별 별명 우선, 없으면 실명). 서버가 채워 줍니다. */
+  authorName?: string;
   createdAt: number;
 }
 
