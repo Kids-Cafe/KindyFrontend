@@ -13,7 +13,7 @@ import {
   Images,
 } from "lucide-react";
 import { teacherHasPermission } from "@/app/dashboard/classAccess";
-import type { DashboardData, DashboardRole, FeatureDef, PermissionKey } from "@/app/dashboard/types";
+import type { DashboardData, DashboardRole, FeatureDef, FeatureId, PermissionKey } from "@/app/dashboard/types";
 
 /** 역할별 좌측 기능목록입니다. 디스코드의 "텍스트 채널 목록" 자리를 대체합니다. */
 export const FEATURES_BY_ROLE: Record<DashboardRole, FeatureDef[]> = {
@@ -65,6 +65,15 @@ const PERMISSION_FEATURES: { permission: PermissionKey; feature: FeatureDef }[] 
 ];
 
 /**
+ * **임시로** 모든 계정에서 닫아 둔 기능입니다. 역할이나 권한과 상관없이 `featuresFor`가
+ * 걸러내므로 사이드바·홈 위젯 목록에 뜨지 않고 `canOpenFeature`도 false를 돌려줍니다.
+ *
+ * 화면 코드(`features/RecommendationsFeature.tsx`)와 역할 목록은 그대로 두었습니다 —
+ * 다시 열 때 이 배열에서 id만 지우면 됩니다.
+ */
+const TEMPORARILY_HIDDEN: FeatureId[] = ["recommendations"];
+
+/**
  * 이 사람이 지금 유치원에서 실제로 열 수 있는 기능 목록입니다.
  *
  * 역할별 고정 목록(`FEATURES_BY_ROLE`)만 쓰던 시절에는 원장이 MANAGE_CLASS·MANAGE_MEMBER를
@@ -72,6 +81,15 @@ const PERMISSION_FEATURES: { permission: PermissionKey; feature: FeatureDef }[] 
  * 서버는 처음부터 권한으로 판정하고 있었으니, 화면만 따라가지 못한 셈입니다.
  */
 export function featuresFor(data: DashboardData): FeatureDef[] {
+  return visible(featuresForRole(data));
+}
+
+function visible(features: FeatureDef[]): FeatureDef[] {
+  if (TEMPORARILY_HIDDEN.length === 0) return features;
+  return features.filter((f) => !TEMPORARILY_HIDDEN.includes(f.id));
+}
+
+function featuresForRole(data: DashboardData): FeatureDef[] {
   const base = FEATURES_BY_ROLE[data.role];
   if (data.role !== "teacher") return base;
 

@@ -227,7 +227,11 @@ function DashboardBody({ onMembershipsChanged }: { onMembershipsChanged: () => v
               {activeFeature === "diary" && <DiaryFeature childId={data.myChild.id} />}
               {activeFeature === "reports" && <ReportsFeature />}
               {activeFeature === "parent-chat" && <ParentChatFeature />}
-              {activeFeature === "recommendations" && <RecommendationsFeature />}
+              {/* 임시로 닫아 둔 화면입니다(`TEMPORARILY_HIDDEN`). 사이드바에서 사라진 뒤에도
+                  예전 상태가 남아 열리는 일이 없도록 여기서 한 번 더 막습니다. */}
+              {activeFeature === "recommendations" && canOpenFeature(data, "recommendations") && (
+                <RecommendationsFeature />
+              )}
             </>
           )}
 
