@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Volume2, X } from "lucide-react";
 import { KioSVG, KinaSVG } from "@/app/components/decorative";
 import { useDashboardStore } from "@/app/dashboard/DashboardStoreContext";
-import { loadChildVoiceSettings } from "@/app/dashboard/childVoiceSettings";
+import { useChildVoiceSettings } from "@/app/dashboard/childVoiceSettings";
+import { speakAssistant } from "@/app/dashboard/chatSync";
 import type { AIPartnerId } from "@/app/dashboard/types";
 
 function daysUntil(dateStr: string): number {
@@ -18,23 +19,17 @@ function formatDate(dateStr: string): string {
 }
 
 /**
- * 캐릭터별 목소리입니다(브라우저 SpeechSynthesis 기준: `pitch`·`rate` 모두 1이 기본).
- *
- * 여기는 서버를 거치지 않는 유일한 음성 경로라 숫자를 따로 듭니다. 서버 쪽 값
- * (`ChatDTO.Partner`의 speed·pitchShift)과 **결이 같게** 맞춰 두었습니다 — 키오는 조금
- * 빠르고 낮게, 키나는 조금 느리고 높게. 한쪽을 손보면 다른 쪽도 함께 보세요.
- */
-const PARTNER_VOICE: Record<AIPartnerId, { pitch: number; rate: number }> = {
-  kio: { pitch: 1.0, rate: 1.05 },
-  kina: { pitch: 1.25, rate: 0.95 },
-};
-
-/**
  * 아이 대시보드에 마운트되어, 다가오는(3일 이내) 일정이 있으면 AI 파트너 캐릭터가
- * 말풍선으로 알려줍니다. 설정에서 음성알림이 켜져 있으면 SpeechSynthesis로 짧게 읽어줍니다.
+ * 말풍선으로 알려줍니다. 설정에서 음성알림이 켜져 있으면 짧게 읽어줍니다.
+ *
+ * 읽어 주는 목소리는 채팅과 **같은 경로**를 씁니다 — 서버의 `chat/speak`가 캐릭터 목소리로
+ * 만들어 준 소리를 그대로 재생합니다. 예전에는 여기만 브라우저 SpeechSynthesis를 써서 같은
+ * 캐릭터가 화면마다 다른 목소리로 말했고, 말 빠르기·음높이도 서버 값과 따로 관리해야
+ * 했습니다. 이제 그 숫자들은 서버(`ChatDTO.Partner`)에만 있습니다.
  */
 export function ChildScheduleAnnouncer({ childId, userId, partner }: { childId: string; userId: string; partner: AIPartnerId | null }) {
   const { data } = useDashboardStore();
+  const { settings } = useChildVoiceSettings(userId);
   const [dismissed, setDismissed] = useState(false);
 
   const classId = data.classChildren.find((c) => c.id === childId)?.classId;
@@ -46,35 +41,61 @@ export function ChildScheduleAnnouncer({ childId, userId, partner }: { childId: 
     })
     .sort((a, b) => daysUntil(a.date) - daysUntil(b.date))[0];
 
-  const canSpeak = typeof window !== "undefined" && "speechSynthesis" in window;
+  /**
+   * 재생용 엘리먼트 하나를 계속 씁니다(채팅 화면과 같은 이유입니다). 소리를 서버에서 받아
+   * 오는 동안 사용자 조작과의 연결이 끊기므로, `new Audio()`를 그때그때 만들면 자동재생
+   * 정책에 더 쉽게 걸립니다.
+   */
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const objectUrlRef = useRef<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
-  const speak = useCallback(() => {
-    if (!upcoming || !canSpeak) return false;
-    const settings = loadChildVoiceSettings(userId);
-    if (!settings.enabled) return false;
+  const stop = useCallback(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    const audio = audioRef.current;
+    if (audio) {
+      audio.pause();
+      audio.removeAttribute("src");
+    }
+    if (objectUrlRef.current) {
+      URL.revokeObjectURL(objectUrlRef.current);
+      objectUrlRef.current = null;
+    }
+  }, []);
+
+  const speak = useCallback(async () => {
+    if (!upcoming || !settings.enabled) return;
+
+    stop(); // 앞서 읽던 게 남아 있으면 겹칩니다.
+    const controller = new AbortController();
+    abortRef.current = controller;
 
     const text = `${daysUntil(upcoming.date) === 0 ? "오늘은" : `${daysUntil(upcoming.date)}일 뒤에`} ${upcoming.title} 일정이 있어요!`;
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = "ko-KR";
-    utterance.volume = settings.volume;
-    // 말하는 사람은 채팅과 같은 그 캐릭터입니다. 파트너를 아직 고르지 않았으면 기본
-    // 목소리 그대로 둡니다 — 누구의 것도 아닌 소리가 맞습니다.
-    if (partner) {
-      utterance.pitch = PARTNER_VOICE[partner].pitch;
-      utterance.rate = PARTNER_VOICE[partner].rate;
-    }
-    window.speechSynthesis.cancel(); // 앞서 읽던 게 남아 있으면 겹칩니다.
-    window.speechSynthesis.speak(utterance);
-    return true;
-  }, [upcoming, canSpeak, partner, userId]);
+    // 파트너를 아직 고르지 않았으면 서버의 기본 목소리로 읽습니다 — 누구의 것도 아닌 소리가 맞습니다.
+    const blob = await speakAssistant(text, { partner: partner ?? undefined, signal: controller.signal });
+    if (controller.signal.aborted) return;
 
-  // 자동 재생 시도입니다. iOS Safari는 사용자 조작 없이 호출한 speak()를 조용히 무시하므로
-  // 여기서 소리가 나지 않을 수 있습니다. 그래서 아래에 직접 누를 수 있는 버튼을 함께 둡니다.
+    const audio = audioRef.current;
+    if (!blob || !audio) return;
+
+    const url = URL.createObjectURL(blob);
+    objectUrlRef.current = url;
+    audio.src = url;
+    // iOS는 미디어 볼륨을 OS가 쥐고 있어 이 값을 무시합니다. 다른 환경에서는 먹습니다.
+    audio.volume = settings.volume;
+    try {
+      await audio.play();
+    } catch {
+      // 자동재생이 막혔습니다. 옆의 스피커 버튼이 남은 경로입니다.
+    }
+  }, [upcoming, partner, settings.enabled, settings.volume, stop]);
+
+  // 자동 재생 시도입니다. 브라우저는 사용자 조작 없이 시작한 재생을 막을 수 있으므로 여기서
+  // 소리가 나지 않을 수 있습니다. 그래서 아래에 직접 누를 수 있는 버튼을 함께 둡니다.
   useEffect(() => {
-    speak();
-    return () => {
-      if (canSpeak) window.speechSynthesis.cancel();
-    };
+    void speak();
+    return stop;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [upcoming?.id, userId]);
 
@@ -84,6 +105,7 @@ export function ChildScheduleAnnouncer({ childId, userId, partner }: { childId: 
 
   return (
     <div className="flex items-start gap-3 rounded-2xl p-4 mb-5" style={{ background: "linear-gradient(135deg,#FCE7F3,#EDE9FE)", border: "1px solid rgba(232,121,160,0.25)" }}>
+      <audio ref={audioRef} onEnded={stop} className="hidden" />
       <Char className="h-14 w-auto shrink-0" />
       <div className="flex-1 min-w-0">
         <p className="text-sm font-bold leading-relaxed" style={{ color: "#3B1355" }}>
@@ -91,9 +113,10 @@ export function ChildScheduleAnnouncer({ childId, userId, partner }: { childId: 
         </p>
         <p className="text-xs mt-1" style={{ color: "#A06080" }}>{formatDate(upcoming.date)}{upcoming.time ? ` · ${upcoming.time}` : ""}</p>
       </div>
-      {canSpeak && (
+      {/* 음성알림을 꺼 두었으면 눌러도 아무 소리가 나지 않으므로 버튼도 함께 감춥니다. */}
+      {settings.enabled && (
         <button
-          onClick={speak}
+          onClick={() => void speak()}
           aria-label="일정 다시 듣기"
           title="다시 듣기"
           className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 transition-colors hover:bg-black/[0.05]"
@@ -101,7 +124,14 @@ export function ChildScheduleAnnouncer({ childId, userId, partner }: { childId: 
           <Volume2 className="w-4 h-4" style={{ color: "#A06080" }} />
         </button>
       )}
-      <button onClick={() => setDismissed(true)} aria-label="알림 닫기" className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 transition-colors hover:bg-black/[0.05]">
+      <button
+        onClick={() => {
+          stop(); // 닫았는데 소리만 계속 나면 안 됩니다.
+          setDismissed(true);
+        }}
+        aria-label="알림 닫기"
+        className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 transition-colors hover:bg-black/[0.05]"
+      >
         <X className="w-4 h-4" style={{ color: "#A06080" }} />
       </button>
     </div>
