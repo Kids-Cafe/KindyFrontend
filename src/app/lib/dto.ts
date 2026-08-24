@@ -192,13 +192,23 @@ export interface DiaryDTO {
 
 export type ReportCategoryDTO = "FOOD" | "HEALTH" | "FRIENDSHIP" | "PERSONALITY" | "LEARNING";
 
+/**
+ * 리포트 한 판(版)입니다.
+ *
+ * 리포트는 덮어쓰지 않고 쌓입니다. 같은 카테고리를 다시 쓰면 새 행이 생기고 예전 행은 그대로
+ * 남으므로, "이 아이의 식사 리포트"는 하나가 아니라 여러 판 중 가장 최신입니다. `id`는 그중
+ * 하나를 가리킵니다 — 채팅 데이터 카드가 보낸 그날의 리포트를 계속 보여줄 수 있는 이유입니다.
+ * `/api/user/report/list`는 카테고리별 최신 판만 돌려줍니다.
+ */
 export interface ReportDTO {
+  /** 이 판의 id입니다. 재사용되지 않고, 한번 쓰이면 내용이 바뀌지 않습니다. */
+  id: number;
   childId: string;
   category: ReportCategoryDTO;
   /** 카테고리별 JSON 문자열입니다. 서버는 내용을 검증하지 않고 그대로 저장/반환합니다. */
   data: string;
+  /** 이 판을 쓴 시각입니다. 행이 불변이므로 `updatedAt`은 없습니다. */
   createdAt?: number;
-  updatedAt?: number;
 }
 
 export interface ParentNoteDTO {
@@ -284,6 +294,22 @@ export interface ChatMessageDTO {
   author?: string;
   /** 화면에 쓸 작성자 이름입니다(원별 별명 우선, 없으면 실명). 서버가 채워 줍니다. */
   authorName?: string;
+  /**
+   * 이 데이터 카드가 보여주는 리포트의 id입니다 — 카테고리가 아니라 **그 판**입니다.
+   *
+   * `type`은 다섯 중 어느 리포트인지만 말합니다. 그런데 아이의 "식사 리포트"는 다시 쓸 때마다
+   * 바뀌므로, 카테고리만 저장한 카드는 볼 때마다 오늘 숫자로 다시 읽혔습니다. 작년에 나눈 대화가
+   * 아무도 하지 않은 말을 하게 되는 셈입니다. id는 움직이지 않습니다.
+   *
+   * 없을 수 있습니다: TEXT 메시지는 리포트가 없고, 이 칼럼이 생기기 전 카드 중 어느 아이의
+   * 것인지 확정할 수 없던 것들도 비어 있습니다(docs/migration-report-identity.sql PHASE 4).
+   *
+   * `role`·`author`와 마찬가지로 요청 파라미터가 아닙니다. `chat/send`에 `childId`를 주면
+   * 서버가 그 아이의 현재 리포트를 직접 찾아 찍습니다.
+   */
+  reportId?: number;
+  /** `reportId`가 가리키는 리포트의 JSON 문자열입니다. 카드 하나 때문에 왕복하지 않도록 서버가 같이 실어 줍니다. */
+  reportData?: string;
   createdAt: number;
 }
 

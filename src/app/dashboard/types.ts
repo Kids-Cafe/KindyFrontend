@@ -171,6 +171,9 @@ export interface ChildReports {
 
 export type ReportCategory = keyof ChildReports;
 
+/** 카테고리 하나의 리포트 본문입니다. 어느 카테고리인지는 항상 옆에 같이 다닙니다. */
+export type ReportData = ChildReports[ReportCategory];
+
 export type ChatSender = "child" | "parent" | "teacher" | "ai" | "director";
 
 export type DataCardType = ReportCategory;
@@ -182,6 +185,16 @@ export interface ChatMessage {
   kind: "text" | "data-card";
   text?: string;
   cardType?: DataCardType;
+  /**
+   * 이 카드가 **보낼 당시** 보여 준 리포트입니다.
+   *
+   * `cardType`은 다섯 중 어느 리포트인지만 말하므로, 예전에는 카드를 그릴 때마다 그 아이의
+   * *지금* 리포트를 찾아 그렸습니다. 리포트는 다시 쓸 때마다 바뀌니 작년 대화가 오늘 숫자를
+   * 보여 주게 됩니다. 이제 서버가 보낼 때 그 판을 못박아 주고, 여기 실려 옵니다.
+   *
+   * 이 칼럼이 생기기 전 카드에는 없습니다. 그때는 예전처럼 현재 리포트로 그립니다.
+   */
+  cardData?: ReportData;
   /** epoch ms */
   time: number;
 }

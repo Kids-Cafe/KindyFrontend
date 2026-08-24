@@ -3,7 +3,16 @@ import {
   RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
 } from "recharts";
 import { Smile, Meh, Frown, MessageCircleHeart } from "lucide-react";
-import type { ChildReports, ReportCategory } from "@/app/dashboard/types";
+import type {
+  ChildReports,
+  FoodReportData,
+  FriendshipReportData,
+  HealthReportData,
+  LearningReportData,
+  PersonalityReportData,
+  ReportCategory,
+  ReportData,
+} from "@/app/dashboard/types";
 import { REPORT_META } from "@/app/dashboard/reportMeta";
 
 const STATUS_ICON = { good: Smile, mild: Meh, bad: Frown } as const;
@@ -149,13 +158,28 @@ export function LearningReport({ data }: { data: ChildReports["learning"] }) {
   );
 }
 
-/** 카테고리 이름만으로 알맞은 리포트 컴포넌트를 그려주는 헬퍼입니다. 채팅 데이터 카드/학생 정보창에서 재사용합니다. */
-export function ReportByCategory({ category, reports }: { category: ReportCategory; reports: ChildReports }) {
+/**
+ * 리포트 본문 하나를 그 카테고리에 맞는 컴포넌트로 그립니다.
+ *
+ * 리포트 한 판만 들고 있는 곳을 위한 입구입니다 — 채팅 데이터 카드는 아이의 **현재**
+ * 리포트 묶음이 아니라 그 카드가 보낼 당시의 리포트를 그려야 하므로, `ChildReports` 전체를
+ * 받을 수가 없습니다.
+ *
+ * `data`가 카테고리와 맞는지는 타입이 잡아 주지 못합니다(다섯 본문의 합집합이라서). 카드의
+ * 경우 서버가 못박은 `reportId`의 카테고리가 곧 `type`이므로 둘이 어긋나지 않습니다 —
+ * ChatMessageTypeTest가 그 짝을 지킵니다.
+ */
+export function ReportByCategoryData({ category, data }: { category: ReportCategory; data: ReportData }) {
   switch (category) {
-    case "food": return <FoodReport data={reports.food} />;
-    case "health": return <HealthReport data={reports.health} />;
-    case "friendship": return <FriendshipReport data={reports.friendship} />;
-    case "personality": return <PersonalityReport data={reports.personality} />;
-    case "learning": return <LearningReport data={reports.learning} />;
+    case "food": return <FoodReport data={data as FoodReportData} />;
+    case "health": return <HealthReport data={data as HealthReportData} />;
+    case "friendship": return <FriendshipReport data={data as FriendshipReportData} />;
+    case "personality": return <PersonalityReport data={data as PersonalityReportData} />;
+    case "learning": return <LearningReport data={data as LearningReportData} />;
   }
+}
+
+/** 카테고리 이름만으로 알맞은 리포트 컴포넌트를 그려주는 헬퍼입니다. 학생 정보창/성장 리포트 화면에서 재사용합니다. */
+export function ReportByCategory({ category, reports }: { category: ReportCategory; reports: ChildReports }) {
+  return <ReportByCategoryData category={category} data={reports[category]} />;
 }

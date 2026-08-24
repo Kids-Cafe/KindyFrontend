@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { RefreshCw, Send } from "lucide-react";
 import { useDashboardStore } from "@/app/dashboard/DashboardStoreContext";
 import { REPORT_CATEGORY_ORDER, REPORT_META } from "@/app/dashboard/reportMeta";
-import { ReportByCategory } from "@/app/dashboard/reports";
+import { ReportByCategoryData } from "@/app/dashboard/reports";
 import type { ChatSender, DataCardType } from "@/app/dashboard/types";
 
 function formatTime(ms: number): string {
@@ -68,12 +68,13 @@ export function ThreadChatFeature({
   /**
    * 칩을 누르면 그 종류의 리포트를 먼저 최신으로 만들고, 그 다음에 카드를 붙입니다.
    *
-   * 카드는 붙는 순간이 아니라 **그려지는 순간** `data.reportsByChild`를 읽으므로(`reports.tsx`의
-   * `ReportByCategory`), 이 순서여야 붙자마자 채워진 카드가 보입니다. 반대로 하면 빈 카드가
-   * 먼저 뜨고 나중에 슬쩍 채워집니다.
+   * 이 순서가 이제는 화면 깜빡임이 아니라 **카드에 무엇이 남느냐**의 문제입니다. 서버는 카드를
+   * 붙이는 순간의 리포트를 못박고, 그 뒤로 그 카드는 영원히 그 판을 보여줍니다. 순서를 뒤집으면
+   * 카드에 낡은 판이 박히고, 새로 쓴 리포트는 카드 밖에만 남습니다.
    *
    * 생성에 실패해도 카드는 붙입니다 — 지금 저장돼 있는 리포트라도 보여주는 편이, 칩을 눌렀는데
-   * 아무 일도 일어나지 않는 것보다 낫습니다.
+   * 아무 일도 일어나지 않는 것보다 낫습니다. 저장된 리포트가 아예 없으면 서버가 카드를 거절하고
+   * (`NOT_FOUND`), `insertDataCard`가 그 실패를 삼킵니다.
    */
   async function handleDataFetch(category: DataCardType) {
     setFetching(category);
@@ -100,11 +101,25 @@ export function ThreadChatFeature({
         {messages.map((msg) => {
           const isMine = msg.sender === viewerRole;
           if (msg.kind === "data-card" && msg.cardType) {
+            // 카드에 실려 온 리포트가 곧 그때 보낸 리포트입니다. 서버가 보낼 때 그 판을
+            // 못박아 두므로, 그 뒤에 리포트를 몇 번을 다시 쓰든 이 카드는 그대로입니다.
+            //
+            // 없는 경우는 `reportId` 칼럼이 생기기 전에 붙은 카드뿐이고(그중에서도 어느
+            // 아이인지 확정할 수 없던 것들), 그때는 예전처럼 현재 리포트로 그립니다.
+            // 둘 다 없으면 안내 문구를 냅니다 — 예전에는 `reports`가 없으면 그대로
+            // 터졌습니다(`reports.food`).
+            const cardData = msg.cardData ?? reports?.[msg.cardType];
             return (
               <div key={msg.id} className={`flex flex-col ${isMine ? "items-end" : "items-start"}`}>
                 <p className="text-xs mb-1 px-1" style={{ color: "#A06080" }}>{msg.senderName}님이 {REPORT_META[msg.cardType].short} 정보를 불러왔어요</p>
                 <div className="max-w-[85%] w-full">
-                  <ReportByCategory category={msg.cardType} reports={reports} />
+                  {cardData
+                    ? <ReportByCategoryData category={msg.cardType} data={cardData} />
+                    : (
+                      <div className="rounded-2xl bg-card border p-5 text-sm" style={{ borderColor: "rgba(232,121,160,0.15)", color: "#A06080" }}>
+                        이 카드의 리포트를 불러올 수 없어요.
+                      </div>
+                    )}
                 </div>
               </div>
             );

@@ -965,6 +965,15 @@ export function DashboardStoreProvider({
     [data, refresh],
   );
 
+  /**
+   * 리포트 카드를 대화에 붙입니다.
+   *
+   * `childId`를 함께 보내야 합니다 — 대화 자체에는 어느 아이 이야기인지가 없고, 서버는 이걸로
+   * 볼 권한을 확인한 뒤 그 아이의 **지금** 리포트를 카드에 못박습니다. 그래서 카드는 나중에
+   * 리포트를 다시 써도 붙일 때 보여 준 그대로 남습니다.
+   *
+   * 아직 쓰인 리포트가 없으면 서버가 `NOT_FOUND`로 거절하고, 카드는 붙지 않습니다.
+   */
   const insertDataCard = useCallback(
     async (childId: string, parentId: string, cardType: DataCardType) => {
       if (!data) return;
@@ -972,7 +981,7 @@ export function DashboardStoreProvider({
       if (!target) return;
       try {
         const chat = await ensureChat(data.kindergarten.id, target.parentId, target.teacherId);
-        await sendChatMessage(chat.id, cardType, { cardType });
+        await sendChatMessage(chat.id, cardType, { cardType, childId });
         refresh();
       } catch (cause) {
         console.warn("[Kindy] 데이터 카드를 보내지 못했어요.", cause);

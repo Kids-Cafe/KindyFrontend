@@ -1,6 +1,6 @@
 import { apiGet, apiPost, apiPostBinary, apiUpload } from "@/app/lib/api";
 import type { ChatDTO, ChatMessageDTO, ChatMessageType } from "@/app/lib/dto";
-import type { AIPartnerId, ChatMessage, ChatSender, DataCardType } from "@/app/dashboard/types";
+import type { AIPartnerId, ChatMessage, ChatSender, DataCardType, ReportData } from "@/app/dashboard/types";
 
 /**
  * 백엔드 채팅(`/api/chat/*`)과 화면의 대화창을 잇습니다.
@@ -70,8 +70,29 @@ export function mapMessage(dto: ChatMessageDTO, chat: ChatDTO, participants: Cha
     kind: card ? "data-card" : "text",
     text: card ? undefined : dto.content,
     cardType: card,
+    cardData: card ? parseReportData(dto) : undefined,
     time: dto.createdAt,
   };
+}
+
+/**
+ * 카드가 보낼 당시 보여 준 리포트 본문입니다.
+ *
+ * 서버가 `reportId`로 못박아 둔 그 판을 그대로 실어 보내 줍니다. 없으면 `undefined`를
+ * 돌려주고, 화면은 예전처럼 현재 리포트로 물러섭니다 — 이 칼럼이 생기기 전 카드에만
+ * 해당합니다(docs/migration-report-identity.sql PHASE 4).
+ *
+ * 본문은 서버가 검증하지 않는 JSON 문자열이라 `userSync`의 `mergeReports`와 같은 태도로
+ * 다룹니다: 못 읽으면 카드 하나를 포기하되 대화 전체를 깨뜨리지는 않습니다.
+ */
+function parseReportData(dto: ChatMessageDTO): ReportData | undefined {
+  if (!dto.reportData) return undefined;
+  try {
+    return JSON.parse(dto.reportData) as ReportData;
+  } catch {
+    console.warn(`[Kindy] ${dto.chatId}번 대화의 리포트 카드를 읽지 못했어요.`);
+    return undefined;
+  }
 }
 
 /** 로그인한 사람이 참여 중인 대화 목록입니다. `kindergartenId`를 0 이하로 주면 전부 가져옵니다. */
@@ -126,16 +147,23 @@ export async function ensureAiChat(kindergartenId: number, childId: string): Pro
  *
  * `role`은 보내지 않습니다 — 서버가 사람이 보낸 것을 전부 `user`로 못박습니다.
  * `assistant`는 `requestAiReply`(모델이 실제로 답한 것)만 만듭니다.
+ *
+ * 데이터 카드(`cardType`)에는 `childId`가 **반드시** 필요합니다. 대화 자체는 어느 아이에
+ * 대한 것인지 모르기 때문입니다 — 원 하나와 사람 둘만 기록돼 있고, 보호자에게 아이가 둘일
+ * 수도 있습니다. 리포트 id는 보내지 않습니다: 서버가 그 아이의 현재 리포트를 직접 찾아
+ * 못박습니다. 카드가 가리킬 리포트를 호출부가 고를 수 있으면 남의 아이 리포트도 고를 수
+ * 있기 때문입니다. 돌려받은 DTO에는 `reportId`·`reportData`가 채워져 옵니다.
  */
 export async function sendChatMessage(
   chatId: number,
   content: string,
-  options: { cardType?: DataCardType } = {},
+  options: { cardType?: DataCardType; childId?: string } = {},
 ): Promise<ChatMessageDTO> {
   return apiPost<ChatMessageDTO>("/api/chat/send", {
     chatId,
     content,
     type: options.cardType ? CARD_TO_TYPE[options.cardType] : "TEXT",
+    ...(options.cardType ? { childId: options.childId } : {}),
   });
 }
 
