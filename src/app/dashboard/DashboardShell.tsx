@@ -1,9 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChevronRight, PanelRightClose, PanelRightOpen } from "lucide-react";
+import { ChevronRight, PanelLeftOpen, PanelRightClose, PanelRightOpen } from "lucide-react";
 import { useAuth } from "@/app/auth/AuthContext";
 import { MyPage } from "@/app/sections/MyPage";
 import { ReceivedInvites } from "@/app/auth/ReceivedInvites";
 import { MiniStar } from "@/app/components/decorative";
+import { Sheet, SheetContent, SheetTitle } from "@/app/components/ui/sheet";
+import { cn } from "@/app/components/ui/utils";
+import { useMediaQuery } from "@/app/hooks/useMediaQuery";
+import { usePersistedFlag } from "@/app/hooks/usePersistedFlag";
 import { DashboardStoreProvider, useDashboardStore } from "@/app/dashboard/DashboardStoreContext";
 import { ServerRail } from "@/app/dashboard/ServerRail";
 import { FeatureSidebar } from "@/app/dashboard/FeatureSidebar";
@@ -32,6 +36,19 @@ import { PhotoAlbumFeature } from "@/app/dashboard/features/PhotoAlbumFeature";
 import { ChildScheduleAnnouncer } from "@/app/dashboard/features/ChildScheduleAnnouncer";
 import { RecommendationsFeature } from "@/app/dashboard/features/RecommendationsFeature";
 
+/*
+  사이드바를 화면 옆에 "붙여 둘" 수 있는 폭입니다. 레일 + 사이드바를 뺀 나머지가
+  가운데 칸인데, 이 값들에서 딱 440px이 남습니다(768-56-256, 1024-72-256-256).
+  그보다 좁아지면 붙이지 않고 서랍(오버레이)으로 띄웁니다 — 예전에는 폭이 모자라도
+  계속 붙여 두는 바람에 가운데 칸이 글자 한 자 너비까지 짓눌렸습니다.
+  Tailwind의 `md`/`lg`와 같은 값이라, 클래스 쪽 분기와 어긋나지 않습니다.
+*/
+const MEDIA_DOCK_FEATURE = "(min-width: 768px)";
+const MEDIA_DOCK_MEMBER = "(min-width: 1024px)";
+
+const STORAGE_FEATURE_OPEN = "kindy.sidebar.feature";
+const STORAGE_MEMBER_OPEN = "kindy.sidebar.member";
+
 /** @param onMembershipsChanged 마이페이지에서 유치원을 새로 등록/가입했을 때 워크스페이스 목록을 다시 받게 합니다. */
 function DashboardBody({ onMembershipsChanged }: { onMembershipsChanged: () => void }) {
   const { user } = useAuth();
@@ -43,8 +60,44 @@ function DashboardBody({ onMembershipsChanged }: { onMembershipsChanged: () => v
   const [activeFeature, setActiveFeature] = useState<FeatureId>(() =>
     getDefaultFeature(data.role, Boolean(data.me?.aiPartner)),
   );
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [memberOpen, setMemberOpen] = useState(true);
+  /*
+    한쪽에 두 개씩 상태를 둡니다. `...DockOpen`은 **붙여 둔 상태에서의 선택**이라
+    새로고침 뒤에도 남고, 화면 크기가 바뀌어도 아무도 건드리지 않습니다. 그래서
+    넓은 화면에서 접어 둔 사람이 창을 줄였다 늘려도 접힌 채로 돌아옵니다.
+    `...DrawerOpen`은 좁은 화면에서만 쓰는 일회성 서랍이라 기본값이 닫힘이고,
+    화면이 좁아졌다고 저절로 열리는 일이 없습니다.
+  */
+  const canDockFeature = useMediaQuery(MEDIA_DOCK_FEATURE);
+  const canDockMember = useMediaQuery(MEDIA_DOCK_MEMBER);
+  const [featureDockOpen, setFeatureDockOpen] = usePersistedFlag(STORAGE_FEATURE_OPEN, true);
+  const [memberDockOpen, setMemberDockOpen] = usePersistedFlag(STORAGE_MEMBER_OPEN, true);
+  const [featureDrawerOpen, setFeatureDrawerOpen] = useState(false);
+  const [memberDrawerOpen, setMemberDrawerOpen] = useState(false);
+
+  /*
+    붙이기 <-> 서랍이 바뀌는 순간 열어 뒀던 서랍 상태를 털어 냅니다. 이게 없으면
+    좁은 화면에서 서랍을 열어 둔 채 창을 넓혔다가 다시 줄일 때, 아무도 누르지 않은
+    서랍이 저절로 펼쳐집니다. (렌더 도중 상태를 맞추는 React 권장 방식입니다.)
+  */
+  const dockMode = `${canDockFeature}:${canDockMember}`;
+  const [lastDockMode, setLastDockMode] = useState(dockMode);
+  if (lastDockMode !== dockMode) {
+    setLastDockMode(dockMode);
+    setFeatureDrawerOpen(false);
+    setMemberDrawerOpen(false);
+  }
+
+  const featureDrawer = !canDockFeature && featureDrawerOpen;
+  const memberDrawer = !canDockMember && memberDrawerOpen;
+  const featureVisible = canDockFeature ? featureDockOpen : featureDrawer;
+  const memberVisible = canDockMember ? memberDockOpen : memberDrawer;
+
+  const toggleFeature = () =>
+    canDockFeature ? setFeatureDockOpen((v) => !v) : setFeatureDrawerOpen((v) => !v);
+  const closeFeature = () =>
+    canDockFeature ? setFeatureDockOpen(false) : setFeatureDrawerOpen(false);
+  const toggleMember = () =>
+    canDockMember ? setMemberDockOpen((v) => !v) : setMemberDrawerOpen((v) => !v);
   const [showMyPage, setShowMyPage] = useState(false);
   const [openStudentId, setOpenStudentId] = useState<string | null>(null);
   const [openTeacherId, setOpenTeacherId] = useState<string | null>(null);
@@ -58,6 +111,8 @@ function DashboardBody({ onMembershipsChanged }: { onMembershipsChanged: () => v
     setOpenStudentId(null);
     setOpenTeacherId(null);
     setChatTarget(null);
+    setFeatureDrawerOpen(false);
+    setMemberDrawerOpen(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeWorkspaceId]);
 
@@ -76,9 +131,33 @@ function DashboardBody({ onMembershipsChanged }: { onMembershipsChanged: () => v
 
   function handleSelectFeature(id: FeatureId) {
     setActiveFeature(id);
+    // 서랍으로 띄운 목록에서 골랐다면, 고른 화면이 가려지지 않게 서랍을 닫아 줍니다.
+    setFeatureDrawerOpen(false);
   }
 
   const activeDef = features.find((f) => f.id === activeFeature) ?? features[0];
+
+  // 붙여 둘 때와 서랍으로 띄울 때가 같은 엘리먼트를 쓰도록 여기서 한 번만 만듭니다.
+  const featureSidebar = (
+    <FeatureSidebar
+      kindergartenName={data.kindergarten.name}
+      contextLabel={contextLabel}
+      features={features}
+      activeFeature={activeFeature}
+      onSelectFeature={handleSelectFeature}
+      onOpenMyPage={() => setShowMyPage(true)}
+      onCollapse={closeFeature}
+    />
+  );
+  const memberSidebar = (
+    <MemberSidebar
+      data={data}
+      onOpenStudent={setOpenStudentId}
+      onSelectFeature={handleSelectFeature}
+      onOpenTeacher={setOpenTeacherId}
+      onSelectChild={selectChild}
+    />
+  );
 
   return (
     <div className="fixed inset-0 z-[100] flex bg-background text-foreground">
@@ -88,27 +167,23 @@ function DashboardBody({ onMembershipsChanged }: { onMembershipsChanged: () => v
         onSwitchWorkspace={switchWorkspace}
         onGoMain={() => setActiveFeature(getDefaultFeature(data.role, Boolean(data.me?.aiPartner)))}
       />
-      <div
-        className="shrink-0 overflow-hidden transition-[width] duration-300 ease-in-out"
-        style={{ width: sidebarOpen ? 256 : 0 }}
-      >
-        <div className="w-64 h-full">
-          <FeatureSidebar
-            kindergartenName={data.kindergarten.name}
-            contextLabel={contextLabel}
-            features={features}
-            activeFeature={activeFeature}
-            onSelectFeature={handleSelectFeature}
-            onOpenMyPage={() => setShowMyPage(true)}
-            onCollapse={() => setSidebarOpen(false)}
-          />
+      {canDockFeature && (
+        <div
+          className={cn(
+            "shrink-0 overflow-hidden transition-[width] duration-300 ease-in-out",
+            featureDockOpen ? "w-64" : "w-0",
+          )}
+        >
+          <div className="w-64 h-full">{featureSidebar}</div>
         </div>
-      </div>
+      )}
 
-      {!sidebarOpen && (
+      {/* 세로로 세운 이 열기 탭은 폭에 여유가 있을 때만 씁니다. 좁은 화면에서는
+          자리만 차지하고 읽히지도 않아, 헤더의 아이콘 버튼이 대신합니다. */}
+      {canDockFeature && !featureDockOpen && (
         <div className="shrink-0 flex items-start pt-6 pl-0">
           <button
-            onClick={() => setSidebarOpen(true)}
+            onClick={toggleFeature}
             aria-label="기능 목록 열기"
             className="group relative flex flex-col items-center gap-1.5 pl-2.5 pr-2 py-3 rounded-r-2xl border border-l-0 shadow-sm transition-all duration-200 hover:pr-3.5 hover:-translate-y-0.5"
             style={{
@@ -137,8 +212,18 @@ function DashboardBody({ onMembershipsChanged }: { onMembershipsChanged: () => v
       )}
 
       <div className="flex-1 min-w-0 flex flex-col">
-        <div className="h-14 shrink-0 flex items-center justify-between px-5 border-b" style={{ borderColor: "rgba(232,121,160,0.15)" }}>
-          <div className="flex items-center gap-2 min-w-0">
+        <div className="h-14 shrink-0 flex items-center justify-between gap-2 px-3 md:px-5 border-b" style={{ borderColor: "rgba(232,121,160,0.15)" }}>
+          {!canDockFeature && (
+            <button
+              onClick={toggleFeature}
+              aria-label="기능 목록 열기"
+              aria-expanded={featureVisible}
+              className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-colors hover:bg-black/[0.04]"
+            >
+              <PanelLeftOpen className="w-4 h-4" style={{ color: "#A06080" }} />
+            </button>
+          )}
+          <div className="flex flex-1 items-center gap-2 min-w-0">
             {activeDef && <activeDef.icon className="w-4 h-4 shrink-0" style={{ color: "#E879A0" }} />}
             <span className="font-bold text-sm truncate" style={{ color: "#3B1355" }}>{activeDef?.label}</span>
           </div>
@@ -148,7 +233,7 @@ function DashboardBody({ onMembershipsChanged }: { onMembershipsChanged: () => v
             둘째의 화면에는 들어갈 방법이 아예 없었습니다.
           */}
           {data.role === "parent" && (data.myChildren?.length ?? 0) > 1 && (
-            <div className="flex items-center gap-1 shrink-0 mr-2">
+            <div className="flex items-center gap-1 shrink-0">
               {data.myChildren?.map((child) => {
                 const selected = child.id === data.myChild?.id;
                 return (
@@ -165,107 +250,158 @@ function DashboardBody({ onMembershipsChanged }: { onMembershipsChanged: () => v
                     <span className="w-5 h-5 rounded-full flex items-center justify-center text-[11px] shrink-0" style={{ background: child.avatarColor }}>
                       {child.avatarEmoji}
                     </span>
-                    <span className="truncate max-w-[6rem]">{child.nickname}</span>
+                    {/* 좁은 화면에서는 이름을 접어 두고 얼굴만 남깁니다 — 아이가 둘 이상인
+                        학부모 계정에서 이 칩들이 헤더를 통째로 밀어내던 문제입니다. */}
+                    <span className="hidden sm:block truncate max-w-[6rem]">{child.nickname}</span>
                   </button>
                 );
               })}
             </div>
           )}
           <button
-            onClick={() => setMemberOpen((v) => !v)}
-            aria-label={memberOpen ? "멤버 목록 닫기" : "멤버 목록 열기"}
+            onClick={toggleMember}
+            aria-label={memberVisible ? "멤버 목록 닫기" : "멤버 목록 열기"}
+            aria-expanded={memberVisible}
             className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-colors hover:bg-black/[0.04]"
           >
-            {memberOpen ? <PanelRightClose className="w-4 h-4" style={{ color: "#A06080" }} /> : <PanelRightOpen className="w-4 h-4" style={{ color: "#A06080" }} />}
+            {memberVisible ? <PanelRightClose className="w-4 h-4" style={{ color: "#A06080" }} /> : <PanelRightOpen className="w-4 h-4" style={{ color: "#A06080" }} />}
           </button>
         </div>
 
-        <div className="flex-1 min-h-0 overflow-y-auto p-6">
+        <div className="flex-1 min-h-0 overflow-y-auto">
           {/*
-            이미 어느 유치원에 소속돼 있어도 다른 유치원의 초대는 계속 올 수 있습니다.
-            초대가 대기 중일 때만 나타나며(없으면 아무것도 렌더하지 않습니다), 수락하면
-            워크스페이스 목록을 다시 받아 좌측 레일에 새 유치원이 생깁니다.
+            배너와 화면 본문이 **같은 폭**을 나눠 쓰도록 감싸는 칸입니다. 예전에는
+            배너만 끝에서 끝까지 늘어나고 본문은 각자 `max-w-*`로 왼쪽에 붙어 있어서,
+            넓은 모니터에서는 오른쪽이 통째로 빈 채로 남았습니다. 폭은 여기서만 정하고
+            개별 화면은 더 이상 자기 폭을 정하지 않습니다.
+
+            `h-full`은 채팅 화면(`AiChatFeature`·`ParentChatFeature`)이 화면 높이를
+            꽉 채우고 입력창을 아래에 붙여 두는 데 필요합니다. 빼면 입력창이 떠오릅니다.
+
+            `@container`는 안쪽 그리드가 **창 너비가 아니라 이 칸의 너비**를 보게 합니다.
+            사이드바를 둘 다 펼치면 창이 넓어도 이 칸은 좁은데, 예전 `sm:` 분기는 그걸
+            모른 채 3열로 펼쳐져 카드가 짓눌렸습니다.
           */}
-          <ReceivedInvites onAccepted={onMembershipsChanged} />
-          <NoticeBanner />
-          {data.role !== "child" && <UpcomingScheduleBanner />}
-          {data.role === "child" && data.me && (
-            <ChildScheduleAnnouncer childId={data.me.id} userId={user?.id ?? data.me.id} partner={data.me.aiPartner} />
-          )}
+          <div className="@container mx-auto h-full w-full max-w-3xl px-4 py-5 md:px-6 md:py-6">
+            {/*
+              이미 어느 유치원에 소속돼 있어도 다른 유치원의 초대는 계속 올 수 있습니다.
+              초대가 대기 중일 때만 나타나며(없으면 아무것도 렌더하지 않습니다), 수락하면
+              워크스페이스 목록을 다시 받아 좌측 레일에 새 유치원이 생깁니다.
+            */}
+            <ReceivedInvites onAccepted={onMembershipsChanged} />
+            <NoticeBanner />
+            {data.role !== "child" && <UpcomingScheduleBanner />}
+            {data.role === "child" && data.me && (
+              <ChildScheduleAnnouncer childId={data.me.id} userId={user?.id ?? data.me.id} partner={data.me.aiPartner} />
+            )}
 
-          {data.role === "child" && data.me && (
-            <>
-              {activeFeature === "partner-select" && (
-                <PartnerSelect
-                  childId={data.me.id}
-                  currentPartner={data.me.aiPartner}
-                  onSelected={() => setActiveFeature("ai-text-chat")}
-                />
-              )}
-              {activeFeature === "ai-text-chat" && !data.me.aiPartner && (
-                <button
-                  onClick={() => setActiveFeature("partner-select")}
-                  className="text-sm font-bold px-5 py-3 rounded-2xl text-white transition-transform active:scale-95"
-                  style={{ background: "linear-gradient(135deg,#E879A0,#F472B6)" }}
-                >
-                  먼저 AI 파트너를 골라주세요 →
-                </button>
-              )}
-              {activeFeature === "ai-text-chat" && data.me.aiPartner && (
-                <AiChatFeature childId={data.me.id} partner={data.me.aiPartner} />
-              )}
-              {activeFeature === "diary" && <DiaryFeature childId={data.me.id} />}
-            </>
-          )}
+            {data.role === "child" && data.me && (
+              <>
+                {activeFeature === "partner-select" && (
+                  <PartnerSelect
+                    childId={data.me.id}
+                    currentPartner={data.me.aiPartner}
+                    onSelected={() => setActiveFeature("ai-text-chat")}
+                  />
+                )}
+                {activeFeature === "ai-text-chat" && !data.me.aiPartner && (
+                  <button
+                    onClick={() => setActiveFeature("partner-select")}
+                    className="text-sm font-bold px-5 py-3 rounded-2xl text-white transition-transform active:scale-95"
+                    style={{ background: "linear-gradient(135deg,#E879A0,#F472B6)" }}
+                  >
+                    먼저 AI 파트너를 골라주세요 →
+                  </button>
+                )}
+                {activeFeature === "ai-text-chat" && data.me.aiPartner && (
+                  <AiChatFeature childId={data.me.id} partner={data.me.aiPartner} />
+                )}
+                {activeFeature === "diary" && <DiaryFeature childId={data.me.id} />}
+              </>
+            )}
 
-          {data.role !== "child" && activeFeature === "home" && (
-            <DashboardHomeFeature role={data.role} onOpenStudent={setOpenStudentId} onNavigate={handleSelectFeature} />
-          )}
+            {data.role !== "child" && activeFeature === "home" && (
+              <DashboardHomeFeature role={data.role} onOpenStudent={setOpenStudentId} onNavigate={handleSelectFeature} />
+            )}
 
-          {data.role === "parent" && data.myChild && (
-            <>
-              {activeFeature === "diary" && <DiaryFeature childId={data.myChild.id} />}
-              {activeFeature === "reports" && <ReportsFeature />}
-              {activeFeature === "parent-chat" && <ParentChatFeature />}
-              {/* 임시로 닫아 둔 화면입니다(`TEMPORARILY_HIDDEN`). 사이드바에서 사라진 뒤에도
-                  예전 상태가 남아 열리는 일이 없도록 여기서 한 번 더 막습니다. */}
-              {activeFeature === "recommendations" && canOpenFeature(data, "recommendations") && (
-                <RecommendationsFeature />
-              )}
-            </>
-          )}
+            {data.role === "parent" && data.myChild && (
+              <>
+                {activeFeature === "diary" && <DiaryFeature childId={data.myChild.id} />}
+                {activeFeature === "reports" && <ReportsFeature />}
+                {activeFeature === "parent-chat" && <ParentChatFeature />}
+                {/* 임시로 닫아 둔 화면입니다(`TEMPORARILY_HIDDEN`). 사이드바에서 사라진 뒤에도
+                    예전 상태가 남아 열리는 일이 없도록 여기서 한 번 더 막습니다. */}
+                {activeFeature === "recommendations" && canOpenFeature(data, "recommendations") && (
+                  <RecommendationsFeature />
+                )}
+              </>
+            )}
 
-          {data.role === "teacher" && (
-            <>
-              {activeFeature === "reports" && <ReportsFeature />}
-              {activeFeature === "teacher-chat" && (
-                <TeacherChatFeature target={chatTarget} onSelectTarget={setChatTarget} />
-              )}
-            </>
-          )}
+            {data.role === "teacher" && (
+              <>
+                {activeFeature === "reports" && <ReportsFeature />}
+                {activeFeature === "teacher-chat" && (
+                  <TeacherChatFeature target={chatTarget} onSelectTarget={setChatTarget} />
+                )}
+              </>
+            )}
 
-          {/*
-            원장 전용이 아니라 **권한이 있는 사람 전용**입니다. `canOpenFeature`가 사이드바를
-            만드는 것과 같은 판정을 쓰므로, 목록에 없는 화면은 여기서도 열리지 않습니다.
-          */}
-          {activeFeature === "notices" && canOpenFeature(data, "notices") && <NoticeManageFeature />}
-          {activeFeature === "classes" && canOpenFeature(data, "classes") && <ClassManageFeature />}
-          {activeFeature === "members" && canOpenFeature(data, "members") && <MemberManageFeature />}
+            {/*
+              원장 전용이 아니라 **권한이 있는 사람 전용**입니다. `canOpenFeature`가 사이드바를
+              만드는 것과 같은 판정을 쓰므로, 목록에 없는 화면은 여기서도 열리지 않습니다.
+            */}
+            {activeFeature === "notices" && canOpenFeature(data, "notices") && <NoticeManageFeature />}
+            {activeFeature === "classes" && canOpenFeature(data, "classes") && <ClassManageFeature />}
+            {activeFeature === "members" && canOpenFeature(data, "members") && <MemberManageFeature />}
 
-          {activeFeature === "supplies" && <SuppliesFeature />}
-          {activeFeature === "schedule" && <ScheduleFeature />}
-          {activeFeature === "photos" && <PhotoAlbumFeature />}
+            {activeFeature === "supplies" && <SuppliesFeature />}
+            {activeFeature === "schedule" && <ScheduleFeature />}
+            {activeFeature === "photos" && <PhotoAlbumFeature />}
+          </div>
         </div>
       </div>
 
-      <div
-        className="shrink-0 overflow-hidden transition-[width] duration-300 ease-in-out"
-        style={{ width: memberOpen ? 256 : 0 }}
-      >
-        <div className="w-64 h-full">
-          <MemberSidebar data={data} onOpenStudent={setOpenStudentId} onSelectFeature={handleSelectFeature} onOpenTeacher={setOpenTeacherId} onSelectChild={selectChild} />
+      {canDockMember && (
+        <div
+          className={cn(
+            "shrink-0 overflow-hidden transition-[width] duration-300 ease-in-out",
+            memberDockOpen ? "w-64" : "w-0",
+          )}
+        >
+          <div className="w-64 h-full">{memberSidebar}</div>
         </div>
-      </div>
+      )}
+
+      {/*
+        폭이 모자랄 때의 사이드바입니다. 흐름에서 빠진 오버레이라 가운데 칸을 밀지
+        않고, 뒷배경·Esc·바깥 클릭·포커스 가둠은 이미 쓰고 있는 `Sheet`가 맡습니다.
+      */}
+      <Sheet open={featureDrawer} onOpenChange={setFeatureDrawerOpen}>
+        <SheetContent side="left" className="w-64 p-0 gap-0 [&>button]:hidden">
+          <SheetTitle className="sr-only">기능 목록</SheetTitle>
+          {featureSidebar}
+        </SheetContent>
+      </Sheet>
+
+      <Sheet open={memberDrawer} onOpenChange={setMemberDrawerOpen}>
+        <SheetContent side="right" className="w-64 p-0 gap-0 [&>button]:hidden">
+          <SheetTitle className="sr-only">멤버 목록</SheetTitle>
+          <div className="flex h-full min-h-0 flex-col">
+            {/* `MemberSidebar`에는 닫기 버튼이 없어서, 서랍으로 띄울 때만 머리말을 붙입니다. */}
+            <div className="h-14 shrink-0 flex items-center justify-between px-3 border-b" style={{ borderColor: "rgba(232,121,160,0.15)" }}>
+              <span className="text-sm font-bold" style={{ color: "#3B1355" }}>멤버</span>
+              <button
+                onClick={() => setMemberDrawerOpen(false)}
+                aria-label="멤버 목록 닫기"
+                className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors hover:bg-black/[0.04]"
+              >
+                <PanelRightClose className="w-4 h-4" style={{ color: "#A06080" }} />
+              </button>
+            </div>
+            <div className="flex-1 min-h-0">{memberSidebar}</div>
+          </div>
+        </SheetContent>
+      </Sheet>
 
       {/*
         반 배정이 들어 있는 패널이라 원장뿐 아니라 명단을 관리하는 선생님도 이쪽을 씁니다 —

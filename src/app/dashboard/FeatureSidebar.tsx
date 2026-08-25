@@ -30,7 +30,7 @@ export function FeatureSidebar({
   if (!user) return null;
 
   return (
-    <div className="w-64 h-full shrink-0 flex flex-col bg-card border-r" style={{ borderColor: "rgba(232,121,160,0.15)" }}>
+    <div className="w-full h-full shrink-0 flex flex-col bg-card border-r" style={{ borderColor: "rgba(232,121,160,0.15)" }}>
       <div className="px-4 py-4 border-b flex items-center justify-between gap-2" style={{ borderColor: "rgba(232,121,160,0.12)" }}>
         <div className="min-w-0">
           <p className="font-bold text-sm truncate" style={{ color: "#3B1355", fontFamily: "'Fredoka',sans-serif" }}>{kindergartenName}</p>

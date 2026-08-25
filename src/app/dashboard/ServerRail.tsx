@@ -30,19 +30,19 @@ export function ServerRail({
 }) {
   return (
     <div
-      className="w-[72px] shrink-0 flex flex-col items-center py-4 gap-3"
+      className="w-14 md:w-[72px] shrink-0 flex flex-col items-center py-3 md:py-4 gap-2 md:gap-3 overflow-y-auto"
       style={{ background: "linear-gradient(180deg, #3B1355 0%, #6B2D8C 55%, #1F0A3C 100%)" }}
     >
       <button
         onClick={onGoMain}
         title="대시보드 메인으로 이동"
         aria-label="대시보드 메인으로 이동"
-        className="h-9 px-2.5 rounded-xl flex items-center justify-center shrink-0 transition-transform hover:scale-110 active:scale-95 text-white text-[13px] font-bold tracking-tight"
+        className="h-9 px-1.5 md:px-2.5 rounded-xl flex items-center justify-center shrink-0 transition-transform hover:scale-110 active:scale-95 text-white text-[11px] md:text-[13px] font-bold tracking-tight"
         style={{ background: "linear-gradient(135deg,#E879A0,#F472B6)", fontFamily: "'Fredoka',sans-serif" }}
       >
         kindy
       </button>
-      <div className="w-8 h-px" style={{ background: "rgba(255,255,255,0.15)" }} />
+      <div className="w-7 md:w-8 h-px shrink-0" style={{ background: "rgba(255,255,255,0.15)" }} />
       {workspaces.map((ws) => {
         const active = ws.id === activeWorkspaceId;
         const emoji = ROLE_EMOJI[ws.role];
@@ -54,7 +54,7 @@ export function ServerRail({
             title={title}
             aria-label={title}
             aria-current={active ? "page" : undefined}
-            className="w-12 h-12 rounded-2xl flex items-center justify-center font-bold text-white text-lg transition-all hover:rounded-xl hover:scale-105 active:scale-95"
+            className="w-11 h-11 md:w-12 md:h-12 shrink-0 rounded-2xl flex items-center justify-center font-bold text-white text-lg transition-all hover:rounded-xl hover:scale-105 active:scale-95"
             style={{
               background: active ? "linear-gradient(135deg,#E879A0,#F472B6)" : "rgba(255,255,255,0.14)",
               border: active ? "1px solid rgba(255,255,255,0.4)" : "1px solid rgba(255,255,255,0.2)",

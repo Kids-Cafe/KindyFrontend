@@ -112,7 +112,7 @@ export function ChildFullReport({ child, viewerRole }: { child: ChildRecord; vie
   }
 
   return (
-    <div className="max-w-2xl pb-10">
+    <div className="pb-10">
       <div className="flex items-center gap-3 mb-2">
         <span className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl shrink-0" style={{ background: child.avatarColor }}>{child.avatarEmoji}</span>
         <div>

@@ -175,7 +175,7 @@ export function MemberSidebar({
   onSelectChild: (childId: string) => void;
 }) {
   return (
-    <div className="w-64 h-full shrink-0 border-l bg-card overflow-y-auto px-3 py-4" style={{ borderColor: "rgba(232,121,160,0.15)" }}>
+    <div className="w-full h-full shrink-0 border-l bg-card overflow-y-auto px-3 py-4" style={{ borderColor: "rgba(232,121,160,0.15)" }}>
       {/*
         원장과 "멤버/반 관리" 권한을 받은 선생님은 유치원 전체를 반별로 봅니다. 권한이 없는
         선생님은 예전처럼 자기 반 학생만 봅니다.

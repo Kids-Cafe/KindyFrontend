@@ -36,7 +36,7 @@ export function NoticesFeature({ canManage = false }: { canManage?: boolean }) {
   }
 
   return (
-    <div className="max-w-2xl">
+    <div>
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2 text-xs font-bold" style={{ color: "#E879A0" }}>
           <Megaphone className="w-3.5 h-3.5" />

@@ -31,13 +31,13 @@ export function DashboardHomeFeature({
   const availableToAdd = catalogue.filter((f) => !widgetIds.includes(f.id));
 
   return (
-    <div className="max-w-3xl space-y-8">
+    <div className="space-y-8">
       <NoticesFeature />
 
       {role === "teacher" && (
         <div>
           <p className="text-xs font-bold mb-4" style={{ color: "#A06080" }}>{data.teacher.className} · 학생 {children.length}명</p>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 @xs:grid-cols-2 @xl:grid-cols-3 gap-3">
             {children.map((child) => (
               <button
                 key={child.id}
@@ -99,7 +99,7 @@ export function DashboardHomeFeature({
         {addedWidgets.length === 0 ? (
           <p className="text-xs" style={{ color: "#9CA3AF" }}>위젯을 추가하면 여기에 바로가기 카드가 나타나요.</p>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 @xs:grid-cols-2 @xl:grid-cols-3 gap-3">
             {addedWidgets.map((f) => (
               <div
                 key={f.id}

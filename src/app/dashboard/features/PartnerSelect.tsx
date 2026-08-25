@@ -18,7 +18,7 @@ export function PartnerSelect({ childId, currentPartner, onSelected }: { childId
   }
 
   return (
-    <div className="max-w-2xl">
+    <div>
       <h2 className="text-lg font-bold mb-1" style={{ color: "#3B1355", fontFamily: "'Fredoka',sans-serif" }}>
         {currentPartner ? "파트너를 바꿔볼까요?" : "누구와 이야기하고 싶어요?"}
       </h2>

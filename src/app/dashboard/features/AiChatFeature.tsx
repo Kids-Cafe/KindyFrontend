@@ -182,7 +182,7 @@ export function AiChatFeature({ childId, partner }: { childId: string; partner: 
   }, [lastMessage, settings.readReplies, speak]);
 
   return (
-    <div className="flex flex-col h-full max-w-2xl">
+    <div className="flex flex-col h-full">
       <audio ref={audioRef} onEnded={stopSpeaking} className="hidden" />
 
       <header className="flex items-center gap-2 pb-3 mb-1 shrink-0 border-b" style={{ borderColor: `${char.color}22` }}>

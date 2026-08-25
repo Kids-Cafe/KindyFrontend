@@ -174,7 +174,7 @@ export function MemberManageFeature() {
   }
 
   return (
-    <div className="max-w-2xl space-y-8">
+    <div className="space-y-8">
       <div>
         <div className="flex items-center gap-2 text-xs font-bold mb-4" style={{ color: "#E879A0" }}>
           <ShieldCheck className="w-3.5 h-3.5" />

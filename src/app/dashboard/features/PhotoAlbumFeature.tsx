@@ -274,7 +274,7 @@ export function PhotoAlbumFeature() {
   }
 
   return (
-      <div className="max-w-3xl">
+      <div>
         {showClassTabs && data.classes.length > 0 && (
             <div className="flex flex-wrap gap-2 mb-4" role="tablist" aria-label="반 선택">
               {data.classes.map((c) => {
@@ -358,26 +358,26 @@ export function PhotoAlbumFeature() {
             style={{ background: "linear-gradient(160deg,#FFFBF3,#FFF1DC)", border: "1px solid rgba(180,140,90,0.2)" }}
         >
           <div
-              className="absolute left-0 top-0 bottom-0 w-6 sm:w-8 flex flex-col items-center justify-evenly z-0"
+              className="absolute left-0 top-0 bottom-0 w-6 @md:w-8 flex flex-col items-center justify-evenly z-0"
               style={{ background: "linear-gradient(90deg,rgba(0,0,0,0.07),transparent)" }}
               aria-hidden="true"
           >
             {Array.from({ length: 12 }).map((_, i) => (
                 <span
                     key={i}
-                    className="w-3 h-3 sm:w-3.5 sm:h-3.5 rounded-full shrink-0"
+                    className="w-3 h-3 @md:w-3.5 @md:h-3.5 rounded-full shrink-0"
                     style={{ background: "linear-gradient(135deg,#D1D5DB,#8A8A8A)", boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.15)" }}
                 />
             ))}
           </div>
 
-          <div className="relative pl-9 sm:pl-12 pr-5 sm:pr-6 py-7">
+          <div className="relative pl-9 @md:pl-12 pr-5 @md:pr-6 py-7">
             {photos.length === 0 ? (
                 <p className="text-sm" style={{ color: "#A06080" }}>
                   {activeClassName ? `${activeClassName}에는 아직 등록된 사진이 없어요.` : "아직 등록된 사진이 없어요."}
                 </p>
             ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-6">
+                <div className="grid grid-cols-1 @xs:grid-cols-2 @xl:grid-cols-3 gap-x-4 gap-y-6">
                   {photos.map((photo, i) => (
                       <PhotoCard
                           key={photo.id}

@@ -29,7 +29,7 @@ export function TeacherChatFeature({ target, onSelectTarget }: { target: ChatTar
   if (!target) {
     const rows = children.flatMap((child) => child.parents.map((parent) => ({ child, parent })));
     return (
-      <div className="max-w-2xl">
+      <div>
         <div className="flex items-center gap-2 mb-4 text-xs font-bold" style={{ color: "#E879A0" }}>
           <MessagesSquare className="w-3.5 h-3.5" />
           대화할 학부모를 선택하세요

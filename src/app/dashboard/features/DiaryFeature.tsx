@@ -115,7 +115,7 @@ export function DiaryFeature({ childId }: { childId: string }) {
   const writing = state.kind === "writing";
 
   return (
-    <div className="max-w-2xl">
+    <div>
       <div className="flex items-center gap-2 mb-1.5 text-xs font-bold" style={{ color: "#E879A0" }}>
         <BookOpen className="w-3.5 h-3.5" />
         AI 파트너와의 대화를 바탕으로 자동으로 기록돼요

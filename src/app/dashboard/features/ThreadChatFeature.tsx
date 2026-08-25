@@ -89,7 +89,7 @@ export function ThreadChatFeature({
   }
 
   return (
-    <div className="flex flex-col h-full max-w-2xl">
+    <div className="flex flex-col h-full">
       <div className="pb-3 mb-3 border-b" style={{ borderColor: "rgba(232,121,160,0.15)" }}>
         <p className="text-xs" style={{ color: "#A06080" }}>{childNickname} 학생 · {counterpartName}님과의 대화</p>
       </div>
