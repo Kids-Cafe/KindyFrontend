@@ -12,9 +12,9 @@ const NAV_LINKS = [
 ] as const;
 
 /**
- * 로그인 / 무료 시작하기를 하나의 알약 모양 박스로 묶은 토글입니다.
+ * 로그인 / 시작하기를 하나의 알약 모양 박스로 묶은 토글입니다.
  * 배경 하이라이트가 마우스가 올라가 있는 버튼 쪽으로 슬라이드하며 따라갑니다.
- * 아무 것도 호버하지 않으면 기본값인 "무료 시작하기" 쪽에 하이라이트가 머뭅니다.
+ * 아무 것도 호버하지 않으면 기본값인 "시작하기" 쪽에 하이라이트가 머뭅니다.
  */
 function AuthSlideToggle({
   scrolled,
@@ -87,7 +87,7 @@ function AuthSlideToggle({
         className="relative z-10 text-sm font-bold px-5 py-2 rounded-full transition-colors duration-200"
         style={{ color: active === "signup" ? (scrolled ? "white" : "#E879A0") : scrolled ? "#3B1355" : "white" }}
       >
-        무료 시작하기
+        시작하기
       </button>
     </div>
   );
@@ -300,7 +300,7 @@ export function Navbar({
                 )}
               </div>
             ) : (
-              /* ── 비로그인 상태: 로그인/무료 시작하기가 하나의 박스에서 하이라이트가 슬라이드합니다. ── */
+              /* ── 비로그인 상태: 로그인/시작하기가 하나의 박스에서 하이라이트가 슬라이드합니다. ── */
               <AuthSlideToggle scrolled={scrolled} onOpenLogin={onOpenLogin} onOpenSignup={onOpenSignup} />
             )}
           </div>
@@ -360,7 +360,7 @@ export function Navbar({
                   <button onClick={() => { setMenuOpen(false); onOpenLogin(); }} className="text-sm font-semibold text-foreground">로그인</button>
                   <button onClick={() => { setMenuOpen(false); onOpenSignup(); }} className="text-sm font-bold px-5 py-2.5 rounded-full text-white"
                     style={{ background: "linear-gradient(135deg,#E879A0,#F472B6)" }}>
-                    무료 시작하기
+                    시작하기
                   </button>
                 </>
               )}

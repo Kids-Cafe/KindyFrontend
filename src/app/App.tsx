@@ -11,6 +11,7 @@ import { Footer } from "@/app/sections/Footer";
 import { isOnCallbackRoute } from "@/app/auth/oauth";
 import { useAuth } from "@/app/auth/AuthContext";
 import { ErrorBoundary } from "@/app/components/ErrorBoundary";
+import type { LegalDocId } from "@/app/data/legalData";
 
 // 첫 화면(랜딩 상단)에 필요 없는 것들은 따로 떼어 냅니다. 특히 대시보드와
 // 로그인/가입 화면은 각각 무거운 의존성(차트, 대형 배경 이미지)을 끌고 오기 때문에
@@ -27,6 +28,7 @@ const OnboardingWizard = lazy(() =>
   import("@/app/sections/onboarding/OnboardingWizard").then((m) => ({ default: m.OnboardingWizard })),
 );
 const MyPage = lazy(() => import("@/app/sections/MyPage").then((m) => ({ default: m.MyPage })));
+const LegalPage = lazy(() => import("@/app/sections/LegalPage").then((m) => ({ default: m.LegalPage })));
 const OAuthCallback = lazy(() => import("@/app/sections/OAuthCallback").then((m) => ({ default: m.OAuthCallback })));
 const DashboardShell = lazy(() =>
   import("@/app/dashboard/DashboardShell").then((m) => ({ default: m.DashboardShell })),
@@ -62,6 +64,8 @@ export default function App() {
   const [showCharacters, setShowCharacters] = useState(false);
   const [authFlow, setAuthFlow] = useState<AuthFlow>(null);
   const [showMyPage, setShowMyPage] = useState(false);
+  /** 푸터에서 연 약관/방침 문서입니다. null이면 닫힌 상태입니다. */
+  const [legalDoc, setLegalDoc] = useState<LegalDocId | null>(null);
 
   const { isAuthenticated, user, sessionExpired } = useAuth();
 
@@ -139,6 +143,7 @@ export default function App() {
         )}
         {authFlow === "onboarding" && <OnboardingWizard onComplete={() => setAuthFlow(null)} />}
         {showMyPage && <MyPage onClose={() => setShowMyPage(false)} />}
+        {legalDoc && <LegalPage key={legalDoc} docId={legalDoc} onClose={() => setLegalDoc(null)} />}
       </Suspense>
 
       <div style={{ opacity: splashDone ? 1 : 0, transition: "opacity 0.5s ease-in" }}>
@@ -158,8 +163,8 @@ export default function App() {
         </Suspense>
         <PersonasSection />
         <TestimonialsSection />
-        <CTASection />
-        <Footer />
+        <CTASection onOpenSignup={() => setAuthFlow("signup")} />
+        <Footer onOpenLegal={setLegalDoc} />
       </div>
     </div>
   );

@@ -1,8 +1,8 @@
-import { ArrowRight, Download, Shield, Bell, Star } from "lucide-react";
+import { ArrowRight, Shield, Bell, Sparkles } from "lucide-react";
 import { Sparkle, CloudPuff, MushroomTeal, MushroomPink, MushroomOrange, KioSVG, KinaSVG } from "@/app/components/decorative";
 
-/** 푸터 앞에 표시되는 앱스토어 배지가 있는 최종 행동 유도 배너입니다. */
-export function CTASection() {
+/** 푸터 앞에 표시되는 최종 행동 유도 배너입니다. */
+export function CTASection({ onOpenSignup }: { onOpenSignup: () => void }) {
   return (
     <section className="py-28 relative overflow-hidden"
       style={{ background: "linear-gradient(160deg, #C8B8F0 0%, #E8B8D8 30%, #F9C0D4 60%, #FFD8C0 100%)" }}>
@@ -62,48 +62,17 @@ export function CTASection() {
           아이의 소중한 하루를 지금 바로 기록해보세요.
         </p>
 
-        <div className="flex flex-col sm:flex-row gap-4 justify-center mb-12">
-          <button className="font-bold px-10 py-4 rounded-2xl transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5 flex items-center justify-center gap-2 text-sm text-white"
+        <div className="flex justify-center mb-12">
+          <button
+            onClick={onOpenSignup}
+            className="font-bold px-10 py-4 rounded-2xl transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5 flex items-center justify-center gap-2 text-sm text-white"
             style={{ background: "linear-gradient(135deg, #E879A0, #C084FC)" }}>
-            무료로 시작하기 <ArrowRight className="w-5 h-5" />
-          </button>
-          <button className="font-bold px-10 py-4 rounded-2xl transition-all flex items-center justify-center gap-2 text-sm"
-            style={{ background: "rgba(255,255,255,0.65)", border: "2px solid rgba(255,255,255,0.8)", color: "#C0397A", backdropFilter: "blur(8px)" }}>
-            <Download className="w-5 h-5" /> 앱 다운로드
-          </button>
-        </div>
-
-        {/* 앱스토어 배지 */}
-        <div className="flex items-center justify-center gap-4 mb-10 flex-wrap">
-          {/* 앱스토어 */}
-          <button className="flex items-center gap-3 px-5 py-3 rounded-2xl transition-all"
-            style={{ background: "rgba(255,255,255,0.55)", border: "1px solid rgba(255,255,255,0.7)", backdropFilter: "blur(8px)" }}>
-            <svg viewBox="0 0 24 24" fill="#3B1355" width={28} height={28} aria-label="Apple">
-              <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/>
-            </svg>
-            <div className="text-left">
-              <div className="text-xs" style={{ color: "#A06080" }}>iOS</div>
-              <div className="font-bold text-sm" style={{ color: "#3B1355" }}>App Store</div>
-            </div>
-          </button>
-          {/* 구글 플레이 */}
-          <button className="flex items-center gap-3 px-5 py-3 rounded-2xl transition-all"
-            style={{ background: "rgba(255,255,255,0.55)", border: "1px solid rgba(255,255,255,0.7)", backdropFilter: "blur(8px)" }}>
-            <svg viewBox="0 0 24 24" fill="none" width={28} height={28} aria-label="Google Play">
-              <path d="M3.18 23.76a1.49 1.49 0 001.24.05l13.02-7.54-2.91-2.91-11.35 10.4z" fill="#EA4335"/>
-              <path d="M22.56 10.26l-3.92-2.28-3.28 3.04 3.28 3.04 3.96-2.3a1.49 1.49 0 000-2.5z" fill="#FBBC04"/>
-              <path d="M3.18.24A1.49 1.49 0 002.5 1.5v21a1.49 1.49 0 00.68 1.26L15.53 12 3.18.24z" fill="#4285F4"/>
-              <path d="M4.42.05L17.44 7.6l-2.91 2.91L3.18.24A1.49 1.49 0 014.42.05z" fill="#34A853"/>
-            </svg>
-            <div className="text-left">
-              <div className="text-xs" style={{ color: "#A06080" }}>Android</div>
-              <div className="font-bold text-sm" style={{ color: "#3B1355" }}>Google Play</div>
-            </div>
+            시작하기 <ArrowRight className="w-5 h-5" />
           </button>
         </div>
 
         <div className="flex items-center justify-center gap-8 text-sm flex-wrap" style={{ color: "#8B5A80" }}>
-          {[{ icon: Shield, label: "아동 개인정보 보호" }, { icon: Bell, label: "실시간 알림" }, { icon: Star, label: "14일 무료 체험" }].map((item) => (
+          {[{ icon: Shield, label: "아동 개인정보 보호" }, { icon: Bell, label: "실시간 알림" }, { icon: Sparkles, label: "AI 성장 리포트" }].map((item) => (
             <div key={item.label} className="flex items-center gap-2">
               <item.icon className="w-4 h-4" /> {item.label}
             </div>

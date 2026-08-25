@@ -32,6 +32,7 @@ export function TestimonialsSection() {
               <p className="text-sm leading-relaxed flex-1 mb-6" style={{ color: "#6B3580" }}>
                 &ldquo;{t.text}&rdquo;
               </p>
+              <p className="text-sm flex-1 mb-2" style={{ color: "#6B3580", opacity: 0.5, fontStyle: "italic" }}>모의 생성된 후기입니다.</p>
               <div className="flex items-center gap-3 pt-4" style={{ borderTop: "1px solid rgba(232,121,160,0.12)" }}>
                 <div className="w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0"
                   style={{ background: t.avatarBg }}>

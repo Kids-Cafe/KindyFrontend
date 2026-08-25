@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { Mic, ArrowRight, BookOpen, Users, Smile, UtensilsCrossed } from "lucide-react";
 import { Sparkle, MiniStar, CloudPuff, MushroomTeal, MushroomPink, MushroomOrange, KioSVG, KinaSVG } from "@/app/components/decorative";
 import { heroEmotions, KIO_INFO, KINA_INFO } from "@/app/data/heroData";
-import { DEMO_VIDEO_URL } from "@/app/data/demoVideo";
 
 /**
  * 랜딩 히어로입니다. 왼쪽에는 헤드라인과 애니메이션 "아이가 말해요" 채팅 말풍선,
@@ -119,26 +118,14 @@ export function HeroSection({ onOpenSignup }: { onOpenSignup: () => void }) {
                 onClick={onOpenSignup}
                 className="font-bold px-8 py-4 rounded-2xl transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 flex items-center justify-center gap-2 text-sm text-white"
                 style={{ background: "linear-gradient(135deg, #E879A0 0%, #C084FC 100%)" }}>
-                무료로 시작하기
+                시작하기
                 <ArrowRight className="w-5 h-5" />
-              </button>
-              <button
-                onClick={() => { if (DEMO_VIDEO_URL) window.open(DEMO_VIDEO_URL, "_blank", "noopener,noreferrer"); }}
-                className="font-semibold px-8 py-4 rounded-2xl transition-all flex items-center justify-center gap-2 text-sm"
-                style={{ background: "rgba(255,255,255,0.65)", border: "2px solid rgba(232,121,160,0.3)",
-                  color: "#C0397A", backdropFilter: "blur(8px)" }}>
-                데모 영상 보기
-                <div className="w-5 h-5 rounded-full flex items-center justify-center"
-                  style={{ background: "rgba(232,121,160,0.2)" }}>
-                  <div className="w-0 h-0 border-t-[4px] border-t-transparent border-b-[4px] border-b-transparent border-l-[7px] ml-0.5"
-                    style={{ borderLeftColor: "#E879A0" }} />
-                </div>
               </button>
             </div>
 
             {/* 지표 */}
             <div className="flex items-center gap-6 pt-2 flex-wrap">
-              {[{ value: "2,400+", label: "이용 아동" }, { value: "180+", label: "파트너 기관" }, { value: "98%", label: "만족도" }].map((s, i) => (
+              {[{ value: "2,400+*", label: "이용 아동" }, { value: "180+*", label: "파트너 기관" }, { value: "98%*", label: "만족도" }].map((s, i) => (
                 <div key={i} className="flex items-center gap-5">
                   {i > 0 && <div className="w-px h-10" style={{ background: "rgba(192,57,122,0.2)" }} />}
                   <div>
