@@ -68,8 +68,6 @@ export function TeacherChatFeature({ target, onSelectTarget }: { target: ChatTar
   }
 
   return (
-    <ChatCaptureGuard viewerName={viewerName}>
-      <ThreadChatFeature childId={target.childId} parentId={target.parentId} viewerRole="teacher" viewerName={viewerName} />
-    </ChatCaptureGuard>
+    <ThreadChatFeature childId={target.childId} parentId={target.parentId} viewerRole="teacher" viewerName={viewerName} />
   );
 }
